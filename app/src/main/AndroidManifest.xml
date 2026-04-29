@@ -11,8 +11,7 @@
         
         <activity
             android:name=".MainActivity"
-            android:exported="true"
-            android:theme="@android:style/Theme.Light.NoTitleBar">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -21,8 +20,7 @@
         
         <activity
             android:name=".ReportViewerActivity"
-            android:exported="true"
-            android:theme="@android:style/Theme.Light.NoTitleBar">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
