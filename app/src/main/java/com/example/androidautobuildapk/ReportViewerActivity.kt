@@ -1,6 +1,7 @@
 package com.example.repview
 
 import android.content.Intent
+import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.widget.TableLayout
@@ -16,6 +17,7 @@ class ReportViewerActivity : AppCompatActivity() {
     
     private lateinit var tableLayout: TableLayout
     private val dateFormat = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
+    private val currentDate = Date() // Текущая дата
     
     // Класс для хранения данных по неделе
     data class WeekData(
@@ -163,6 +165,10 @@ class ReportViewerActivity : AppCompatActivity() {
         return calendar.time
     }
     
+    private fun isCurrentDateInRange(startDate: Date, endDate: Date): Boolean {
+        return currentDate in startDate..endDate
+    }
+    
     private fun displayTable(weekDataList: List<WeekData>) {
         addTableHeader()
         
@@ -170,15 +176,19 @@ class ReportViewerActivity : AppCompatActivity() {
             val startDateStr = dateFormat.format(week.startDate)
             val endDateStr = dateFormat.format(week.endDate)
             val sumValue = week.sumValue.toString()
-            val plus4Weeks = addWeeks(week.startDate, 4)
-            val plus5Weeks = addWeeks(week.startDate, 5)
+            val orderDate = addWeeks(week.startDate, 4)  // Заказ (+4 недели)
+            val paymentDate = addWeeks(week.startDate, 5) // Получка (+5 недель)
+            
+            // Проверяем, попадает ли текущая дата в интервал между Заказом и Получкой
+            val isInRange = isCurrentDateInRange(orderDate, paymentDate)
             
             addDataRow(
                 startDateStr,
                 endDateStr,
                 sumValue,
-                dateFormat.format(plus4Weeks),
-                dateFormat.format(plus5Weeks)
+                dateFormat.format(orderDate),
+                dateFormat.format(paymentDate),
+                isInRange
             )
         }
     }
@@ -191,8 +201,8 @@ class ReportViewerActivity : AppCompatActivity() {
         val weekHeader = TextView(this).apply {
             text = "Неделя"
             setPadding(16, 12, 16, 12)
-            setTextColor(resources.getColor(android.R.color.white))
-            setBackgroundColor(resources.getColor(android.R.color.holo_blue_dark))
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.rgb(33, 150, 243)) // Material Blue
             textSize = 14f
             gravity = android.view.Gravity.CENTER
         }
@@ -210,8 +220,8 @@ class ReportViewerActivity : AppCompatActivity() {
             val tv = TextView(this).apply {
                 text = header
                 setPadding(16, 12, 16, 12)
-                setTextColor(resources.getColor(android.R.color.white))
-                setBackgroundColor(resources.getColor(android.R.color.holo_blue_dark))
+                setTextColor(Color.WHITE)
+                setBackgroundColor(Color.rgb(33, 150, 243)) // Material Blue
                 textSize = 14f
                 gravity = android.view.Gravity.CENTER
             }
@@ -227,8 +237,8 @@ class ReportViewerActivity : AppCompatActivity() {
             val tv = TextView(this).apply {
                 text = subHeader
                 setPadding(16, 8, 16, 8)
-                setTextColor(resources.getColor(android.R.color.white))
-                setBackgroundColor(resources.getColor(android.R.color.holo_blue_light))
+                setTextColor(Color.WHITE)
+                setBackgroundColor(Color.rgb(100, 181, 246)) // Light Blue
                 textSize = 12f
                 gravity = android.view.Gravity.CENTER
             }
@@ -237,7 +247,7 @@ class ReportViewerActivity : AppCompatActivity() {
         tableLayout.addView(headerRow2)
     }
     
-    private fun addDataRow(col1: String, col2: String, col3: String, col4: String, col5: String) {
+    private fun addDataRow(col1: String, col2: String, col3: String, col4: String, col5: String, highlightColumns45: Boolean) {
         val row = TableRow(this)
         val data = arrayOf(col1, col2, col3, col4, col5)
         
@@ -247,25 +257,35 @@ class ReportViewerActivity : AppCompatActivity() {
                 setPadding(16, 12, 16, 12)
                 textSize = 12f
                 gravity = android.view.Gravity.CENTER
+                setTextIsSelectable(true)
                 
                 when {
                     index < 2 -> { // Первые два столбца (Неделя)
-                        setBackgroundColor(resources.getColor(android.R.color.white))
+                        setBackgroundColor(Color.WHITE)
+                        setTextColor(Color.BLACK)
                     }
                     index == 2 -> { // Сумма
-                        setBackgroundColor(resources.getColor(android.R.color.holo_orange_light))
-                        setTextColor(resources.getColor(android.R.color.black))
+                        setBackgroundColor(Color.rgb(255, 193, 7)) // Amber
+                        setTextColor(Color.BLACK)
                         textSize = 14f
                     }
-                    else -> { // Заказ и Получка
-                        if (index % 2 == 0) {
-                            setBackgroundColor(resources.getColor(android.R.color.white))
+                    index >= 3 -> { // 4-й и 5-й столбцы (Заказ и Получка)
+                        if (highlightColumns45) {
+                            // Подсветка зеленым, если текущая дата в интервале
+                            setBackgroundColor(Color.rgb(76, 175, 80)) // Material Green
+                            setTextColor(Color.WHITE)
+                            textSize = 13f
                         } else {
-                            setBackgroundColor(resources.getColor(android.R.color.background_light))
+                            // Обычный вид
+                            if (index % 2 == 0) {
+                                setBackgroundColor(Color.WHITE)
+                            } else {
+                                setBackgroundColor(Color.rgb(245, 245, 245)) // Light gray
+                            }
+                            setTextColor(Color.BLACK)
                         }
                     }
                 }
-                setTextIsSelectable(true)
             }
             row.addView(tv)
         }
