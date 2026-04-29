@@ -27,12 +27,6 @@ android {
         jvmTarget = '17'
     }
 }    
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-}
-
 
 dependencies {
     implementation("androidx.core:core-ktx:1.12.0")
