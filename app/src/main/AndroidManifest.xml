@@ -1,20 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
-
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.SEND" />
-            <data android:mimeType="*/*" />
-        </intent>
-    </queries>
-
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="Excel Viewer"
-        android:theme="@style/Theme.AppCompat.Light.DarkActionBar"
-        tools:targetApi="31">
+        android:label="RepView"
+        android:theme="@style/Theme.AppCompat.Light">
         
         <activity
             android:name=".MainActivity"
@@ -26,13 +19,15 @@
         </activity>
         
         <activity
-            android:name=".ViewerActivity"
+            android:name=".ReportViewerActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                <data android:mimeType="application/vnd.ms-excel" />
             </intent-filter>
         </activity>
+        
     </application>
 </manifest>
