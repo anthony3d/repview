@@ -11,7 +11,6 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import org.apache.poi.ss.usermodel.WorkbookFactory
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -52,12 +51,13 @@ class ReportViewerActivity : AppCompatActivity() {
     }
     
     private fun processFile(uri: Uri) {
-        var inputStream = null as java.io.InputStream?
+        var inputStream = null
+        var workbook = null
         
         try {
             // Читаем файл напрямую из URI
             inputStream = contentResolver.openInputStream(uri)
-            val workbook = WorkbookFactory.create(inputStream)
+            workbook = WorkbookFactory.create(inputStream)
             val sheet = workbook.getSheetAt(0)
             
             // Получаем последний столбец
@@ -108,8 +108,6 @@ class ReportViewerActivity : AppCompatActivity() {
                 }
             }
             
-            workbook.close()
-            
             if (weekMap.isEmpty()) {
                 Toast.makeText(this, "Нет данных для отображения", Toast.LENGTH_SHORT).show()
                 finish()
@@ -119,105 +117,50 @@ class ReportViewerActivity : AppCompatActivity() {
             // Отображаем таблицу
             displayTable(weekMap.values.toList())
             
-            // Пытаемся удалить исходный файл
-            deleteOriginalFile(uri)
-            
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(this, "Ошибка: ${e.message}", Toast.LENGTH_LONG).show()
         } finally {
+            // Закрываем workbook и inputStream
+            try {
+                workbook?.close()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             try {
                 inputStream?.close()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
+            
+            // Пытаемся удалить исходный файл
+            deleteSourceFile(uri)
         }
     }
     
-    private fun deleteOriginalFile(uri: Uri) {
+    private fun deleteSourceFile(uri: Uri) {
         try {
             // Пытаемся удалить файл через ContentResolver
-            val deleted = contentResolver.delete(uri, null, null)
-            
-            if (deleted > 0) {
-                // Файл успешно удален
-                println("Original file deleted successfully")
-            } else {
-                // Если не удалось удалить через ContentResolver, пробуем другие способы
-                deleteViaFileProvider(uri)
-            }
+            contentResolver.delete(uri, null, null)
+            // Не выводим Toast, чтобы не раздражать пользователя
+        } catch (e: SecurityException) {
+            // Нет прав на удаление - файл в защищенной области
+            // Это нормально для многих приложений
         } catch (e: Exception) {
-            // Если возникла ошибка, пробуем альтернативный способ
-            deleteViaFileProvider(uri)
+            // Другие ошибки тоже игнорируем
+            e.printStackTrace()
         }
-    }
-    
-    private fun deleteViaFileProvider(uri: Uri) {
+        
+        // Дополнительная попытка: если URI указывает на файл в кэше нашего приложения
         try {
-            // Пытаемся получить путь к файлу и удалить его как обычный файл
-            val filePath = getFilePathFromUri(uri)
-            if (filePath != null) {
-                val file = File(filePath)
-                if (file.exists()) {
-                    val deleted = file.delete()
-                    if (deleted) {
-                        println("File deleted via file path: $filePath")
-                    } else {
-                        println("Failed to delete file: $filePath")
-                    }
+            if (uri.scheme == "file") {
+                val file = java.io.File(uri.path)
+                if (file.exists() && file.canWrite()) {
+                    file.delete()
                 }
             }
-            
-            // Дополнительно очищаем кэш приложения
-            clearCache()
-            
         } catch (e: Exception) {
-            println("Error deleting file: ${e.message}")
-        }
-    }
-    
-    private fun getFilePathFromUri(uri: Uri): String? {
-        return try {
-            // Пробуем получить путь для file:// URI
-            if (uri.scheme == ContentResolver.SCHEME_FILE) {
-                return uri.path
-            }
-            
-            // Для content:// URI пытаемся получить путь через документы
-            if (uri.scheme == ContentResolver.SCHEME_CONTENT) {
-                val cursor = contentResolver.query(uri, arrayOf(android.provider.MediaStore.MediaColumns.DATA), null, null, null)
-                cursor?.use {
-                    val columnIndex = it.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA)
-                    if (it.moveToFirst()) {
-                        return it.getString(columnIndex)
-                    }
-                }
-            }
-            null
-        } catch (e: Exception) {
-            null
-        }
-    }
-    
-    private fun clearCache() {
-        try {
-            // Очищаем кэш приложения
-            val cacheDir = cacheDir
-            if (cacheDir.exists() && cacheDir.isDirectory) {
-                cacheDir.listFiles()?.forEach { file ->
-                    if (file.isFile && file.name.startsWith("temp_")) {
-                        file.delete()
-                    }
-                }
-            }
-            
-            // Очищаем кэш через системный менеджер
-            val activityManager = getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
-            activityManager.clearApplicationUserData()
-            
-            println("Cache cleared successfully")
-        } catch (e: Exception) {
-            println("Error clearing cache: ${e.message}")
+            // Игнорируем
         }
     }
     
@@ -389,11 +332,5 @@ class ReportViewerActivity : AppCompatActivity() {
             row.addView(tv)
         }
         tableLayout.addView(row)
-    }
-    
-    override fun onDestroy() {
-        super.onDestroy()
-        // При закрытии активности дополнительно очищаем кэш
-        clearCache()
     }
 }
