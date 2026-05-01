@@ -139,7 +139,7 @@ class ReportViewerActivity : AppCompatActivity() {
             // Пытаемся удалить файл через ContentResolver
             val deleted = contentResolver.delete(uri, null, null)
             
-            if (deleted) {
+            if (deleted > 0) {
                 // Файл успешно удален
                 println("Original file deleted successfully")
             } else {
