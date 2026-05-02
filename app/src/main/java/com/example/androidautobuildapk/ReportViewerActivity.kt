@@ -67,7 +67,7 @@ class ReportViewerActivity : AppCompatActivity() {
             val reportFiles = downloadDir.listFiles { file ->
                 file.isFile && 
                 file.name.endsWith(".xlsx") && 
-                file.name.contains("_Еженедельный_отчет_")
+                file.name.contains("Еженедельный_отчет_20")
             }
             
             if (reportFiles.isNullOrEmpty()) {
