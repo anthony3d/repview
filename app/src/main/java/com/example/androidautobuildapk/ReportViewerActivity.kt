@@ -1,16 +1,17 @@
 package com.example.repview
 
-import android.content.ContentResolver
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import android.widget.TableLayout
 import android.widget.TableRow
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import org.apache.poi.ss.usermodel.WorkbookFactory
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -33,6 +34,9 @@ class ReportViewerActivity : AppCompatActivity() {
         
         tableLayout = findViewById(R.id.tableLayout)
         
+        // Очищаем старые отчеты при запуске
+        cleanOldReports()
+        
         when {
             intent?.action == Intent.ACTION_SEND -> {
                 val uri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
@@ -50,14 +54,54 @@ class ReportViewerActivity : AppCompatActivity() {
         }
     }
     
-    private fun processFile(uri: Uri) {
-        var inputStream = null
-        var workbook = null
-        
+    private fun cleanOldReports() {
         try {
-            // Читаем файл напрямую из URI
-            inputStream = contentResolver.openInputStream(uri)
-            workbook = WorkbookFactory.create(inputStream)
+            // Получаем папку Downloads
+            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            
+            if (!downloadDir.exists() || !downloadDir.isDirectory) {
+                return
+            }
+            
+            // Ищем файлы по маске: *_Еженедельный_отчет_*.xlsx
+            val reportFiles = downloadDir.listFiles { file ->
+                file.isFile && 
+                file.name.endsWith(".xlsx") && 
+                file.name.contains("_Еженедельный_отчет_")
+            }
+            
+            if (reportFiles.isNullOrEmpty()) {
+                return
+            }
+            
+            var deletedCount = 0
+            
+            for (file in reportFiles) {
+                // Удаляем файл
+                if (file.delete()) {
+                    deletedCount++
+                }
+            }
+            
+            if (deletedCount > 0) {
+                Toast.makeText(
+                    this, 
+                    "Удалено старых отчетов: $deletedCount", 
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            
+        } catch (e: Exception) {
+            // Если ошибка - просто игнорируем, основная работа приложения не должна страдать
+            e.printStackTrace()
+        }
+    }
+    
+    private fun processFile(uri: Uri) {
+        try {
+            // Читаем файл напрямую из URI без создания временного файла
+            val inputStream = contentResolver.openInputStream(uri)
+            val workbook = WorkbookFactory.create(inputStream)
             val sheet = workbook.getSheetAt(0)
             
             // Получаем последний столбец
@@ -108,6 +152,9 @@ class ReportViewerActivity : AppCompatActivity() {
                 }
             }
             
+            workbook.close()
+            inputStream?.close()
+            
             if (weekMap.isEmpty()) {
                 Toast.makeText(this, "Нет данных для отображения", Toast.LENGTH_SHORT).show()
                 finish()
@@ -120,47 +167,6 @@ class ReportViewerActivity : AppCompatActivity() {
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(this, "Ошибка: ${e.message}", Toast.LENGTH_LONG).show()
-        } finally {
-            // Закрываем workbook и inputStream
-            try {
-                workbook?.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            try {
-                inputStream?.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            
-            // Пытаемся удалить исходный файл
-            deleteSourceFile(uri)
-        }
-    }
-    
-    private fun deleteSourceFile(uri: Uri) {
-        try {
-            // Пытаемся удалить файл через ContentResolver
-            contentResolver.delete(uri, null, null)
-            // Не выводим Toast, чтобы не раздражать пользователя
-        } catch (e: SecurityException) {
-            // Нет прав на удаление - файл в защищенной области
-            // Это нормально для многих приложений
-        } catch (e: Exception) {
-            // Другие ошибки тоже игнорируем
-            e.printStackTrace()
-        }
-        
-        // Дополнительная попытка: если URI указывает на файл в кэше нашего приложения
-        try {
-            if (uri.scheme == "file") {
-                val file = java.io.File(uri.path)
-                if (file.exists() && file.canWrite()) {
-                    file.delete()
-                }
-            }
-        } catch (e: Exception) {
-            // Игнорируем
         }
     }
     
