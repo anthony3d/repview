@@ -1,13 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.repview">
     
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    
+    <!-- Для Android 11+ нужно также разрешение на управление всеми файлами -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" 
+        tools:ignore="ScopedStorage" />
     
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="RepView"
-        android:theme="@style/Theme.AppCompat.Light">
+        android:theme="@style/Theme.AppCompat.Light"
+        android:requestLegacyExternalStorage="true">
         
         <activity
             android:name=".MainActivity"
@@ -25,7 +32,6 @@
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
-                <data android:mimeType="application/vnd.ms-excel" />
             </intent-filter>
         </activity>
         
