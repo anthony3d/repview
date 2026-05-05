@@ -36,6 +36,13 @@ class ReportViewerActivity : AppCompatActivity() {
         val value: Int
     )
     
+    // Храним прочитанные строки
+    data class RawRow(
+        val startDate: Date?,
+        val endDate: Date?,
+        val number: Int
+    )
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_report_viewer)
@@ -74,37 +81,49 @@ class ReportViewerActivity : AppCompatActivity() {
             val totalRows = sheet.physicalNumberOfRows
             val endRow = minOf(totalRows - 1, startRow + 99)
             
-            // Сначала определим тип отчета по первым строкам
-            var reportType = ReportType.WEEKLY
-            val checkRows = mutableListOf<Pair<Date?, Date?>>()
-            
-            for (i in startRow..minOf(startRow + 4, endRow)) {
+            // Сначала читаем все строки в память
+            val rawRows = mutableListOf<RawRow>()
+            for (i in startRow..endRow) {
                 val row = sheet.getRow(i) ?: continue
+                
                 val startDateCell = row.getCell(2)
                 val endDateCell = row.getCell(3)
+                val numberCell = row.getCell(preLastColumnIndex)
+                
                 val startDate = parseDate(startDateCell)
                 val endDate = parseDate(endDateCell)
+                val number = if (numberCell != null) {
+                    try {
+                        numberCell.numericCellValue.toInt()
+                    } catch (e: Exception) {
+                        0
+                    }
+                } else {
+                    0
+                }
+                
                 if (startDate != null && endDate != null) {
-                    checkRows.add(startDate to endDate)
+                    rawRows.add(RawRow(startDate, endDate, number))
                 }
-            }
-            
-            // Если в большинстве строк даты одинаковые - это ежедневный отчет
-            if (checkRows.isNotEmpty()) {
-                val sameDateCount = checkRows.count { it.first == it.second }
-                if (sameDateCount > checkRows.size / 2) {
-                    reportType = ReportType.DAILY
-                }
-            }
-            
-            if (reportType == ReportType.WEEKLY) {
-                processWeeklyReport(sheet, preLastColumnIndex, startRow, endRow)
-            } else {
-                processDailyReport(sheet, preLastColumnIndex, startRow, endRow)
             }
             
             workbook.close()
             inputStream?.close()
+            
+            if (rawRows.isEmpty()) {
+                Toast.makeText(this, "Нет данных для отображения", Toast.LENGTH_SHORT).show()
+                finish()
+                return
+            }
+            
+            // Определяем тип отчета по первым строкам
+            val reportType = determineReportType(rawRows)
+            
+            if (reportType == ReportType.WEEKLY) {
+                processWeeklyReport(rawRows)
+            } else {
+                processDailyReport(rawRows)
+            }
             
         } catch (e: Exception) {
             e.printStackTrace()
@@ -112,81 +131,46 @@ class ReportViewerActivity : AppCompatActivity() {
         }
     }
     
-    private fun processWeeklyReport(sheet: org.apache.poi.ss.usermodel.Sheet, preLastColumnIndex: Int, startRow: Int, endRow: Int) {
+    private fun determineReportType(rawRows: List<RawRow>): ReportType {
+        val checkRows = rawRows.take(minOf(5, rawRows.size))
+        if (checkRows.isEmpty()) return ReportType.WEEKLY
+        
+        val sameDateCount = checkRows.count { it.startDate == it.endDate }
+        return if (sameDateCount > checkRows.size / 2) ReportType.DAILY else ReportType.WEEKLY
+    }
+    
+    private fun processWeeklyReport(rawRows: List<RawRow>) {
         val weekMap = mutableMapOf<String, WeekData>()
         
-        for (i in startRow..endRow) {
-            val row = sheet.getRow(i) ?: continue
+        for (row in rawRows) {
+            val startDate = row.startDate ?: continue
+            val endDate = row.endDate ?: continue
+            val number = row.number
             
-            val startDateCell = row.getCell(2)
-            val endDateCell = row.getCell(3)
-            val numberCell = row.getCell(preLastColumnIndex)
+            val key = "${dateFormat.format(startDate)}|${dateFormat.format(endDate)}"
             
-            val startDate = parseDate(startDateCell)
-            val endDate = parseDate(endDateCell)
-            val number = if (numberCell != null) {
-                try {
-                    numberCell.numericCellValue.toInt()
-                } catch (e: Exception) {
-                    0
-                }
+            if (weekMap.containsKey(key)) {
+                weekMap[key]?.sumValue = weekMap[key]!!.sumValue + number
             } else {
-                0
+                weekMap[key] = WeekData(startDate, endDate, number)
             }
-            
-            if (startDate != null && endDate != null) {
-                val key = "${dateFormat.format(startDate)}|${dateFormat.format(endDate)}"
-                
-                if (weekMap.containsKey(key)) {
-                    weekMap[key]?.sumValue = weekMap[key]!!.sumValue + number
-                } else {
-                    weekMap[key] = WeekData(startDate, endDate, number)
-                }
-            }
-        }
-        
-        if (weekMap.isEmpty()) {
-            Toast.makeText(this, "Нет данных для отображения", Toast.LENGTH_SHORT).show()
-            finish()
-            return
         }
         
         displayWeeklyTable(weekMap.values.toList())
     }
     
-    private fun processDailyReport(sheet: org.apache.poi.ss.usermodel.Sheet, preLastColumnIndex: Int, startRow: Int, endRow: Int) {
+    private fun processDailyReport(rawRows: List<RawRow>) {
         val dailyDataList = mutableListOf<DailyData>()
         val weekGroups = mutableMapOf<Date, MutableList<Int>>()
         
-        for (i in startRow..endRow) {
-            val row = sheet.getRow(i) ?: continue
+        for (row in rawRows) {
+            val date = row.startDate ?: continue
+            val number = row.number
             
-            val startDateCell = row.getCell(2)
-            val startDate = parseDate(startDateCell)
-            val numberCell = row.getCell(preLastColumnIndex)
+            dailyDataList.add(DailyData(date, number))
             
-            val number = if (numberCell != null) {
-                try {
-                    numberCell.numericCellValue.toInt()
-                } catch (e: Exception) {
-                    0
-                }
-            } else {
-                0
-            }
-            
-            if (startDate != null) {
-                dailyDataList.add(DailyData(startDate, number))
-                
-                val weekStart = getWeekStart(startDate)
-                weekGroups.getOrPut(weekStart) { mutableListOf() }.add(number)
-            }
-        }
-        
-        if (dailyDataList.isEmpty()) {
-            Toast.makeText(this, "Нет данных для отображения", Toast.LENGTH_SHORT).show()
-            finish()
-            return
+            val weekStart = getWeekStart(date)
+            weekGroups.getOrPut(weekStart) { mutableListOf() }.add(number)
         }
         
         displayDailyTable(dailyDataList, weekGroups)
@@ -197,6 +181,10 @@ class ReportViewerActivity : AppCompatActivity() {
         calendar.time = date
         calendar.firstDayOfWeek = Calendar.MONDAY
         calendar.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
         return calendar.time
     }
     
@@ -467,7 +455,11 @@ class ReportViewerActivity : AppCompatActivity() {
                             textSize = 13f
                         } else {
                             setBackgroundColor(Color.WHITE)
-                            setTextColor(Color.LTGRAY)
+                            if (value.isEmpty()) {
+                                setTextColor(Color.WHITE) // Делаем пустые ячейки незаметными
+                            } else {
+                                setTextColor(Color.LTGRAY)
+                            }
                         }
                     }
                 }
