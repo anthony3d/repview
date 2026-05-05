@@ -1,458 +1,175 @@
 package com.example.repview
 
-import android.content.Intent
-import android.graphics.Color
-import android.net.Uri
-import android.os.Bundle
-import android.widget.TableLayout
-import android.widget.TableRow
-import android.widget.TextView
-import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
-import org.apache.poi.ss.usermodel.WorkbookFactory
+import android.content.Context
+import android.graphics.*
+import android.util.AttributeSet
+import android.view.View
 import java.text.SimpleDateFormat
 import java.util.*
 
-class ReportViewerActivity : AppCompatActivity() {
+class SimpleLineChart @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = 0
+) : View(context, attrs, defStyleAttr) {
     
-    private lateinit var tableLayout: TableLayout
-    private lateinit var lineChart: SimpleLineChart
-    private val dateFormat = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
-    private val currentDate = Date()
-    
-    enum class ReportType {
-        WEEKLY,   // Еженедельный (даты начала и конца недели разные)
-        DAILY     // Ежедневный (даты начала и конца недели одинаковые)
+    private var dataPoints = mutableListOf<DataPoint>()
+    private val paintLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(76, 175, 80)
+        strokeWidth = 4f
+        style = Paint.Style.STROKE
     }
     
-    data class WeekData(
-        val startDate: Date,
-        val endDate: Date,
-        var sumValue: Int = 0
+    private val paintPoint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(33, 150, 243)
+        style = Paint.Style.FILL
+    }
+    
+    private val paintText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.BLACK
+        textSize = 28f
+    }
+    
+    private val paintGrid = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.LTGRAY
+        strokeWidth = 1f
+        style = Paint.Style.STROKE
+    }
+    
+    private val dateFormat = SimpleDateFormat("dd.MM", Locale.getDefault())
+    
+    data class DataPoint(
+        val date: Date,
+        val value: Int
     )
     
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_report_viewer)
-        
-        tableLayout = findViewById(R.id.tableLayout)
-        lineChart = findViewById(R.id.lineChart)
-        
-        when {
-            intent?.action == Intent.ACTION_SEND -> {
-                val uri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
-                if (uri != null) {
-                    processFile(uri)
-                } else {
-                    Toast.makeText(this, "Файл не найден", Toast.LENGTH_SHORT).show()
-                    finish()
-                }
-            }
-            else -> {
-                Toast.makeText(this, "Запустите через 'Поделиться'", Toast.LENGTH_SHORT).show()
-                finish()
-            }
-        }
+    fun setData(data: List<DataPoint>) {
+        dataPoints = data.toMutableList()
+        invalidate()
     }
     
-    private fun processFile(uri: Uri) {
-        try {
-            val inputStream = contentResolver.openInputStream(uri)
-            val workbook = WorkbookFactory.create(inputStream)
-            val sheet = workbook.getSheetAt(0)
-            
-            val headerRow = sheet.getRow(0)
-            val lastColumnIndex = headerRow.lastCellNum - 1
-            val preLastColumnIndex = lastColumnIndex - 1
-            
-            val dataList = mutableListOf<WeekData>()
-            
-            val startRow = 1
-            val totalRows = sheet.physicalNumberOfRows
-            val endRow = minOf(totalRows - 1, startRow + 99)
-            
-            for (i in startRow..endRow) {
-                val row = sheet.getRow(i) ?: continue
-                
-                val startDateCell = row.getCell(2)
-                val endDateCell = row.getCell(3)
-                val numberCell = row.getCell(preLastColumnIndex)
-                
-                val startDate = parseDate(startDateCell)
-                val endDate = parseDate(endDateCell)
-                val number = if (numberCell != null) {
-                    try {
-                        numberCell.numericCellValue.toInt()
-                    } catch (e: Exception) {
-                        0
-                    }
-                } else {
-                    0
-                }
-                
-                if (startDate != null && endDate != null) {
-                    dataList.add(WeekData(startDate, endDate, number))
-                }
-            }
-            
-            workbook.close()
-            inputStream?.close()
-            
-            if (dataList.isEmpty()) {
-                Toast.makeText(this, "Нет данных для отображения", Toast.LENGTH_SHORT).show()
-                finish()
-                return
-            }
-            
-            // Определяем тип отчета по первой строке
-            val reportType = if (isSameDay(dataList[0].startDate, dataList[0].endDate)) {
-                ReportType.DAILY
-            } else {
-                ReportType.WEEKLY
-            }
-            
-            if (reportType == ReportType.WEEKLY) {
-                processWeeklyReport(dataList)
-            } else {
-                processDailyReport(dataList)
-            }
-            
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(this, "Ошибка: ${e.message}", Toast.LENGTH_LONG).show()
-        }
-    }
-    
-    private fun isSameDay(date1: Date, date2: Date): Boolean {
-        val cal1 = Calendar.getInstance().apply { time = date1 }
-        val cal2 = Calendar.getInstance().apply { time = date2 }
-        return cal1.get(Calendar.YEAR) == cal2.get(Calendar.YEAR) &&
-               cal1.get(Calendar.DAY_OF_YEAR) == cal2.get(Calendar.DAY_OF_YEAR)
-    }
-    
-    private fun processWeeklyReport(dataList: List<WeekData>) {
-        // Группируем по неделям
-        val weekMap = mutableMapOf<String, WeekData>()
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
         
-        for (data in dataList) {
-            val key = "${dateFormat.format(data.startDate)}|${dateFormat.format(data.endDate)}"
-            
-            if (weekMap.containsKey(key)) {
-                weekMap[key]?.sumValue = weekMap[key]!!.sumValue + data.sumValue
-            } else {
-                weekMap[key] = WeekData(data.startDate, data.endDate, data.sumValue)
-            }
-        }
-        
-        displayWeeklyTable(weekMap.values.toList())
-        
-        // Данные для графика
-        val chartData = weekMap.values.map { 
-            SimpleLineChart.DataPoint(addWeeks(it.startDate, 5), it.sumValue) 
-        }
-        lineChart.setData(chartData)
-    }
-    
-    private fun processDailyReport(dataList: List<WeekData>) {
-        // Группируем по дням (суммируем значения за один день)
-        val dailyMap = mutableMapOf<String, WeekData>()
-        
-        for (data in dataList) {
-            val key = dateFormat.format(data.startDate)
-            
-            if (dailyMap.containsKey(key)) {
-                dailyMap[key]?.sumValue = dailyMap[key]!!.sumValue + data.sumValue
-            } else {
-                dailyMap[key] = WeekData(data.startDate, data.endDate, data.sumValue)
-            }
-        }
-        
-        val dailyList = dailyMap.values.toList()
-        
-        // Находим первый понедельник для расчета +4 и +5 недель
-        val firstMonday = getMondayOfWeek(dailyList[0].startDate)
-        
-        displayDailyTable(dailyList, firstMonday)
-        
-        // Данные для графика (все даты строк)
-        val chartData = dailyList.map { 
-            SimpleLineChart.DataPoint(it.startDate, it.sumValue) 
-        }
-        lineChart.setData(chartData)
-    }
-    
-    private fun getMondayOfWeek(date: Date): Date {
-        val calendar = Calendar.getInstance()
-        calendar.time = date
-        // Переводим на понедельник
-        val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
-        var daysToMonday = dayOfWeek - Calendar.MONDAY
-        if (daysToMonday < 0) daysToMonday += 7
-        calendar.add(Calendar.DAY_OF_YEAR, -daysToMonday)
-        return calendar.time
-    }
-    
-    private fun displayWeeklyTable(weekDataList: List<WeekData>) {
-        addWeeklyHeader()
-        
-        for (week in weekDataList) {
-            val startDateStr = dateFormat.format(week.startDate)
-            val endDateStr = dateFormat.format(week.endDate)
-            val sumValue = week.sumValue.toString()
-            val orderDate = addWeeks(week.startDate, 4)
-            val paymentDate = addWeeks(week.startDate, 5)
-            
-            val isInRange = isCurrentDateInRange(orderDate, paymentDate)
-            
-            addWeeklyDataRow(
-                startDateStr,
-                endDateStr,
-                sumValue,
-                dateFormat.format(orderDate),
-                dateFormat.format(paymentDate),
-                isInRange
+        if (dataPoints.isEmpty()) {
+            paintText.color = Color.GRAY
+            paintText.textSize = 40f
+            val text = "Нет данных для графика"
+            val textWidth = paintText.measureText(text)
+            canvas.drawText(
+                text,
+                width / 2 - textWidth / 2,
+                height / 2.toFloat(),
+                paintText
             )
+            return
         }
-    }
-    
-    private fun displayDailyTable(dailyList: List<WeekData>, firstMonday: Date) {
-        addDailyHeader()
         
-        val mondayPlus4 = addWeeks(firstMonday, 4)
-        val mondayPlus5 = addWeeks(firstMonday, 5)
-        val orderDateStr = dateFormat.format(mondayPlus4)
-        val paymentDateStr = dateFormat.format(mondayPlus5)
-        val isInRange = isCurrentDateInRange(mondayPlus4, mondayPlus5)
+        // Настройки отступов
+        val paddingLeft = 80f
+        val paddingRight = 40f
+        val paddingTop = 40f
+        val paddingBottom = 60f
         
-        // Показываем только первую пару для всего отчета
-        var rangeShown = false
+        val chartWidth = width - paddingLeft - paddingRight
+        val chartHeight = height - paddingTop - paddingBottom
         
-        for (day in dailyList) {
-            val dateStr = dateFormat.format(day.startDate)
-            val sumValue = day.sumValue.toString()
+        // Находим min и max значения
+        val maxValue = dataPoints.maxOfOrNull { it.value } ?: 1
+        val minValue = dataPoints.minOfOrNull { it.value } ?: 0
+        val valueRange = if (maxValue == minValue) 1f else (maxValue - minValue).toFloat()
+        
+        // Рисуем сетку
+        drawGrid(canvas, paddingLeft, paddingTop, chartWidth, chartHeight, maxValue, minValue)
+        
+        // Рисуем оси
+        drawAxes(canvas, paddingLeft, paddingTop, chartWidth, chartHeight)
+        
+        // Рисуем точки и линии
+        val points = mutableListOf<Pair<Float, Float>>()
+        
+        for ((index, point) in dataPoints.withIndex()) {
+            val x = paddingLeft + (index * chartWidth / (dataPoints.size - 1).coerceAtLeast(1))
+            val y = paddingTop + chartHeight - ((point.value - minValue) / valueRange * chartHeight)
             
-            addDailyDataRow(
-                dateStr,
-                sumValue,
-                if (!rangeShown) orderDateStr else "",
-                if (!rangeShown) paymentDateStr else "",
-                isInRange && !rangeShown
-            )
-            rangeShown = true
-        }
-    }
-    
-    private fun addWeeklyHeader() {
-        val headerRow1 = TableRow(this)
-        
-        val weekHeader = TextView(this).apply {
-            text = "Неделя"
-            setPadding(16, 12, 16, 12)
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.rgb(33, 150, 243))
-            textSize = 14f
-            gravity = android.view.Gravity.CENTER
+            points.add(x to y)
+            
+            // Рисуем точку
+            canvas.drawCircle(x, y, 6f, paintPoint)
         }
         
-        val weekHeaderSpan = TableRow.LayoutParams().apply {
-            span = 2
-        }
-        weekHeader.layoutParams = weekHeaderSpan
-        headerRow1.addView(weekHeader)
-        
-        val headers = arrayOf("Сумма", "Заказ", "Получка")
-        for (header in headers) {
-            val tv = TextView(this).apply {
-                text = header
-                setPadding(16, 12, 16, 12)
-                setTextColor(Color.WHITE)
-                setBackgroundColor(Color.rgb(33, 150, 243))
-                textSize = 14f
-                gravity = android.view.Gravity.CENTER
+        // Рисуем линию
+        if (points.size > 1) {
+            for (i in 0 until points.size - 1) {
+                canvas.drawLine(
+                    points[i].first, points[i].second,
+                    points[i + 1].first, points[i + 1].second,
+                    paintLine
+                )
             }
-            headerRow1.addView(tv)
         }
-        tableLayout.addView(headerRow1)
         
-        val headerRow2 = TableRow(this)
-        val subHeaders = arrayOf("Начало", "Конец", "", "", "")
+        // Рисуем даты на горизонтальной оси (каждую пятую)
+        paintText.textSize = 22f
+        paintText.color = Color.BLACK
+        val step = maxOf(1, dataPoints.size / 10) // Показываем примерно 10 дат
         
-        for (subHeader in subHeaders) {
-            val tv = TextView(this).apply {
-                text = subHeader
-                setPadding(16, 8, 16, 8)
-                setTextColor(Color.WHITE)
-                setBackgroundColor(Color.rgb(100, 181, 246))
-                textSize = 12f
-                gravity = android.view.Gravity.CENTER
+        for ((index, point) in dataPoints.withIndex()) {
+            if (index % step == 0 || index == dataPoints.size - 1) {
+                val x = paddingLeft + (index * chartWidth / (dataPoints.size - 1).coerceAtLeast(1))
+                val dateText = dateFormat.format(point.date)
+                val dateWidth = paintText.measureText(dateText)
+                canvas.drawText(dateText, x - dateWidth / 2, height - paddingBottom + 25f, paintText)
             }
-            headerRow2.addView(tv)
         }
-        tableLayout.addView(headerRow2)
     }
     
-    private fun addDailyHeader() {
-        val headerRow1 = TableRow(this)
-        
-        val dateHeader = TextView(this).apply {
-            text = "Дата"
-            setPadding(16, 12, 16, 12)
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.rgb(33, 150, 243))
-            textSize = 14f
-            gravity = android.view.Gravity.CENTER
+    private fun drawGrid(
+        canvas: Canvas,
+        paddingLeft: Float,
+        paddingTop: Float,
+        chartWidth: Float,
+        chartHeight: Float,
+        maxValue: Int,
+        minValue: Int
+    ) {
+        // Горизонтальные линии сетки (4 линии)
+        for (i in 0..4) {
+            val y = paddingTop + (i * chartHeight / 4)
+            canvas.drawLine(paddingLeft, y, paddingLeft + chartWidth, y, paintGrid)
+            
+            // Подписи значений на вертикальной оси
+            val value = maxValue - (i * (maxValue - minValue) / 4)
+            paintText.color = Color.GRAY
+            paintText.textSize = 24f
+            val valueText = value.toInt().toString()
+            canvas.drawText(valueText, 10f, y + 8f, paintText)
         }
-        headerRow1.addView(dateHeader)
         
-        val headers = arrayOf("Сумма", "Заказ", "Получка")
-        for (header in headers) {
-            val tv = TextView(this).apply {
-                text = header
-                setPadding(16, 12, 16, 12)
-                setTextColor(Color.WHITE)
-                setBackgroundColor(Color.rgb(33, 150, 243))
-                textSize = 14f
-                gravity = android.view.Gravity.CENTER
+        // Вертикальные линии сетки
+        if (dataPoints.size > 1) {
+            val step = maxOf(1, dataPoints.size / 10)
+            for (i in 0 until dataPoints.size step step) {
+                val x = paddingLeft + (i * chartWidth / (dataPoints.size - 1))
+                canvas.drawLine(x, paddingTop, x, paddingTop + chartHeight, paintGrid)
             }
-            headerRow1.addView(tv)
         }
-        tableLayout.addView(headerRow1)
     }
     
-    private fun addWeeklyDataRow(col1: String, col2: String, col3: String, col4: String, col5: String, highlightColumns45: Boolean) {
-        val row = TableRow(this)
-        val data = arrayOf(col1, col2, col3, col4, col5)
+    private fun drawAxes(
+        canvas: Canvas,
+        paddingLeft: Float,
+        paddingTop: Float,
+        chartWidth: Float,
+        chartHeight: Float
+    ) {
+        paintLine.color = Color.BLACK
+        paintLine.strokeWidth = 2f
         
-        for ((index, value) in data.withIndex()) {
-            val tv = TextView(this).apply {
-                text = value
-                setPadding(16, 12, 16, 12)
-                textSize = 12f
-                gravity = android.view.Gravity.CENTER
-                setTextIsSelectable(true)
-                
-                when {
-                    index < 2 -> {
-                        setBackgroundColor(Color.WHITE)
-                        setTextColor(Color.BLACK)
-                    }
-                    index == 2 -> {
-                        setBackgroundColor(Color.rgb(255, 193, 7))
-                        setTextColor(Color.BLACK)
-                        textSize = 14f
-                    }
-                    index >= 3 -> {
-                        if (highlightColumns45) {
-                            setBackgroundColor(Color.rgb(76, 175, 80))
-                            setTextColor(Color.WHITE)
-                            textSize = 13f
-                        } else {
-                            if (index % 2 == 0) {
-                                setBackgroundColor(Color.WHITE)
-                            } else {
-                                setBackgroundColor(Color.rgb(245, 245, 245))
-                            }
-                            setTextColor(Color.BLACK)
-                        }
-                    }
-                }
-            }
-            row.addView(tv)
-        }
-        tableLayout.addView(row)
-    }
-    
-    private fun addDailyDataRow(col1: String, col2: String, col3: String, col4: String, highlightColumns34: Boolean) {
-        val row = TableRow(this)
-        val data = arrayOf(col1, col2, col3, col4)
+        // Ось Y
+        canvas.drawLine(paddingLeft, paddingTop, paddingLeft, paddingTop + chartHeight, paintLine)
         
-        for ((index, value) in data.withIndex()) {
-            val tv = TextView(this).apply {
-                text = value
-                setPadding(16, 12, 16, 12)
-                textSize = 12f
-                gravity = android.view.Gravity.CENTER
-                setTextIsSelectable(true)
-                
-                when {
-                    index == 0 -> {
-                        setBackgroundColor(Color.WHITE)
-                        setTextColor(Color.BLACK)
-                    }
-                    index == 1 -> {
-                        setBackgroundColor(Color.rgb(255, 193, 7))
-                        setTextColor(Color.BLACK)
-                        textSize = 14f
-                    }
-                    index >= 2 -> {
-                        if (highlightColumns34 && value.isNotEmpty()) {
-                            setBackgroundColor(Color.rgb(76, 175, 80))
-                            setTextColor(Color.WHITE)
-                            textSize = 13f
-                        } else {
-                            if (value.isEmpty()) {
-                                setBackgroundColor(Color.rgb(240, 240, 240))
-                                setTextColor(Color.GRAY)
-                            } else if (index % 2 == 0) {
-                                setBackgroundColor(Color.WHITE)
-                                setTextColor(Color.BLACK)
-                            } else {
-                                setBackgroundColor(Color.rgb(245, 245, 245))
-                                setTextColor(Color.BLACK)
-                            }
-                        }
-                    }
-                }
-            }
-            row.addView(tv)
-        }
-        tableLayout.addView(row)
-    }
-    
-    private fun parseDate(cell: org.apache.poi.ss.usermodel.Cell?): Date? {
-        if (cell == null) return null
-        
-        return try {
-            when (cell.cellType) {
-                org.apache.poi.ss.usermodel.CellType.NUMERIC -> {
-                    if (org.apache.poi.ss.usermodel.DateUtil.isCellDateFormatted(cell)) {
-                        cell.dateCellValue
-                    } else {
-                        null
-                    }
-                }
-                org.apache.poi.ss.usermodel.CellType.STRING -> {
-                    val dateStr = cell.stringCellValue.trim()
-                    val formats = listOf(
-                        SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()),
-                        SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()),
-                        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()),
-                        SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
-                    )
-                    for (format in formats) {
-                        try {
-                            return format.parse(dateStr)
-                        } catch (e: Exception) {
-                            // Пробуем следующий формат
-                        }
-                    }
-                    null
-                }
-                else -> null
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
-    
-    private fun addWeeks(date: Date, weeks: Int): Date {
-        val calendar = Calendar.getInstance()
-        calendar.time = date
-        calendar.add(Calendar.WEEK_OF_YEAR, weeks)
-        return calendar.time
-    }
-    
-    private fun isCurrentDateInRange(startDate: Date, endDate: Date): Boolean {
-        return currentDate in startDate..endDate
+        // Ось X
+        canvas.drawLine(paddingLeft, paddingTop + chartHeight, paddingLeft + chartWidth, paddingTop + chartHeight, paintLine)
     }
 }
