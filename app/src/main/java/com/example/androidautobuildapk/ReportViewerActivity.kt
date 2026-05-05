@@ -107,8 +107,8 @@ class ReportViewerActivity : AppCompatActivity() {
                 return
             }
             
-            // Находим последнюю дату
-            val lastDate = allRowsData.maxOfOrNull { it.first }
+            // Находим последнюю дату (максимальную)
+            val lastDate = allRowsData.mapNotNull { it.first }.maxOrNull()
             
             // Определяем тип отчета
             val reportType = if (allRowsData.take(5).count { it.first == it.second } > 2) {
