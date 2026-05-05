@@ -74,45 +74,53 @@ class ReportViewerActivity : AppCompatActivity() {
             val totalRows = sheet.physicalNumberOfRows
             val endRow = minOf(totalRows - 1, startRow + 99)
             
-            // Сначала найдем последнюю дату в файле
-            var lastDateInFile: Date? = null
+            // Сначала соберем все данные для определения типа отчета и последней даты
+            val allRowsData = mutableListOf<Triple<Date?, Date?, Int>>()
+            
             for (i in startRow..endRow) {
                 val row = sheet.getRow(i) ?: continue
-                val startDateCell = row.getCell(2)
-                val startDate = parseDate(startDateCell)
-                if (startDate != null) {
-                    if (lastDateInFile == null || startDate.after(lastDateInFile)) {
-                        lastDateInFile = startDate
-                    }
-                }
-            }
-            
-            // Определим тип отчета
-            var reportType = ReportType.WEEKLY
-            val checkRows = mutableListOf<Pair<Date?, Date?>>()
-            
-            for (i in startRow..minOf(startRow + 4, endRow)) {
-                val row = sheet.getRow(i) ?: continue
+                
                 val startDateCell = row.getCell(2)
                 val endDateCell = row.getCell(3)
+                val numberCell = row.getCell(preLastColumnIndex)
+                
                 val startDate = parseDate(startDateCell)
                 val endDate = parseDate(endDateCell)
+                val number = if (numberCell != null) {
+                    try {
+                        numberCell.numericCellValue.toInt()
+                    } catch (e: Exception) {
+                        0
+                    }
+                } else {
+                    0
+                }
+                
                 if (startDate != null && endDate != null) {
-                    checkRows.add(startDate to endDate)
+                    allRowsData.add(Triple(startDate, endDate, number))
                 }
             }
             
-            if (checkRows.isNotEmpty()) {
-                val sameDateCount = checkRows.count { it.first == it.second }
-                if (sameDateCount > checkRows.size / 2) {
-                    reportType = ReportType.DAILY
-                }
+            if (allRowsData.isEmpty()) {
+                Toast.makeText(this, "Нет данных для отображения", Toast.LENGTH_SHORT).show()
+                finish()
+                return
+            }
+            
+            // Находим последнюю дату
+            val lastDate = allRowsData.maxOfOrNull { it.first }
+            
+            // Определяем тип отчета
+            val reportType = if (allRowsData.take(5).count { it.first == it.second } > 2) {
+                ReportType.DAILY
+            } else {
+                ReportType.WEEKLY
             }
             
             if (reportType == ReportType.WEEKLY) {
-                processWeeklyReport(sheet, preLastColumnIndex, startRow, endRow, lastDateInFile)
+                processWeeklyReport(allRowsData, lastDate)
             } else {
-                processDailyReport(sheet, preLastColumnIndex, startRow, endRow, lastDateInFile)
+                processDailyReport(allRowsData, lastDate)
             }
             
             workbook.close()
@@ -124,42 +132,25 @@ class ReportViewerActivity : AppCompatActivity() {
         }
     }
     
-    private fun processWeeklyReport(sheet: org.apache.poi.ss.usermodel.Sheet, preLastColumnIndex: Int, startRow: Int, endRow: Int, lastDate: Date?) {
+    private fun processWeeklyReport(allRowsData: List<Triple<Date?, Date?, Int>>, lastDate: Date?) {
         val weekMap = mutableMapOf<String, WeekData>()
         
-        for (i in startRow..endRow) {
-            val row = sheet.getRow(i) ?: continue
-            
-            val startDateCell = row.getCell(2)
-            val endDateCell = row.getCell(3)
-            val numberCell = row.getCell(preLastColumnIndex)
-            
-            val startDate = parseDate(startDateCell)
-            val endDate = parseDate(endDateCell)
+        for (data in allRowsData) {
+            val startDate = data.first ?: continue
+            val endDate = data.second ?: continue
+            val number = data.third
             
             // Пропускаем строки с датами после последней даты
-            if (lastDate != null && startDate != null && startDate.after(lastDate)) {
+            if (lastDate != null && startDate.after(lastDate)) {
                 continue
             }
             
-            val number = if (numberCell != null) {
-                try {
-                    numberCell.numericCellValue.toInt()
-                } catch (e: Exception) {
-                    0
-                }
-            } else {
-                0
-            }
+            val key = "${dateFormat.format(startDate)}|${dateFormat.format(endDate)}"
             
-            if (startDate != null && endDate != null) {
-                val key = "${dateFormat.format(startDate)}|${dateFormat.format(endDate)}"
-                
-                if (weekMap.containsKey(key)) {
-                    weekMap[key]?.sumValue = weekMap[key]!!.sumValue + number
-                } else {
-                    weekMap[key] = WeekData(startDate, endDate, number)
-                }
+            if (weekMap.containsKey(key)) {
+                weekMap[key]?.sumValue = weekMap[key]!!.sumValue + number
+            } else {
+                weekMap[key] = WeekData(startDate, endDate, number)
             }
         }
         
@@ -172,39 +163,23 @@ class ReportViewerActivity : AppCompatActivity() {
         displayWeeklyTable(weekMap.values.toList())
     }
     
-    private fun processDailyReport(sheet: org.apache.poi.ss.usermodel.Sheet, preLastColumnIndex: Int, startRow: Int, endRow: Int, lastDate: Date?) {
+    private fun processDailyReport(allRowsData: List<Triple<Date?, Date?, Int>>, lastDate: Date?) {
         val dailyDataList = mutableListOf<DailyData>()
         val weekGroups = mutableMapOf<Date, MutableList<Int>>()
         
-        for (i in startRow..endRow) {
-            val row = sheet.getRow(i) ?: continue
-            
-            val startDateCell = row.getCell(2)
-            val startDate = parseDate(startDateCell)
+        for (data in allRowsData) {
+            val startDate = data.first ?: continue
+            val number = data.third
             
             // Пропускаем строки с датами после последней даты
-            if (lastDate != null && startDate != null && startDate.after(lastDate)) {
+            if (lastDate != null && startDate.after(lastDate)) {
                 continue
             }
             
-            val numberCell = row.getCell(preLastColumnIndex)
+            dailyDataList.add(DailyData(startDate, number))
             
-            val number = if (numberCell != null) {
-                try {
-                    numberCell.numericCellValue.toInt()
-                } catch (e: Exception) {
-                    0
-                }
-            } else {
-                0
-            }
-            
-            if (startDate != null) {
-                dailyDataList.add(DailyData(startDate, number))
-                
-                val weekStart = getWeekStart(startDate)
-                weekGroups.getOrPut(weekStart) { mutableListOf() }.add(number)
-            }
+            val weekStart = getWeekStart(startDate)
+            weekGroups.getOrPut(weekStart) { mutableListOf() }.add(number)
         }
         
         // Сортируем по дате
@@ -254,7 +229,6 @@ class ReportViewerActivity : AppCompatActivity() {
                     for (format in formats) {
                         try {
                             val date = format.parse(dateStr)
-                            // Обнуляем время для корректного сравнения
                             val calendar = Calendar.getInstance()
                             calendar.time = date
                             calendar.set(Calendar.HOUR_OF_DAY, 0)
