@@ -162,18 +162,18 @@ class ReportViewerActivity : AppCompatActivity() {
     
     private fun displayTable(weekDataList: List<WeekData>) {
         addTableHeader()
-    
+        
         val chartData = mutableListOf<SimpleLineChart.DataPoint>()
-    
+        
         for (week in weekDataList) {
             val startDateStr = dateFormat.format(week.startDate)
             val endDateStr = dateFormat.format(week.endDate)
             val sumValue = week.sumValue.toString()
             val orderDate = addWeeks(week.startDate, 4)
             val paymentDate = addWeeks(week.startDate, 5)
-        
+            
             val isInRange = isCurrentDateInRange(orderDate, paymentDate)
-        
+            
             addDataRow(
                 startDateStr,
                 endDateStr,
@@ -182,16 +182,14 @@ class ReportViewerActivity : AppCompatActivity() {
                 dateFormat.format(paymentDate),
                 isInRange
             )
-        
+            
             // Добавляем данные для графика
             chartData.add(SimpleLineChart.DataPoint(paymentDate, week.sumValue))
         }
-    
-        // Сортируем данные по дате для правильного отображения графика
-        chartData.sortBy { it.date }
+        
         lineChart.setData(chartData)
     }
-
+    
     private fun addTableHeader() {
         val headerRow1 = TableRow(this)
         
