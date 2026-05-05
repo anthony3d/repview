@@ -5,17 +5,6 @@
     android:orientation="vertical"
     android:padding="8dp">
     
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Данные отчета"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:gravity="center"
-        android:padding="8dp"
-        android:background="@color/blue_grey"
-        android:textColor="@android:color/white" />
-    
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -38,17 +27,6 @@
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:background="@android:color/darker_gray" />
-    
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="График"
-        android:textSize="14sp"
-        android:textStyle="bold"
-        android:gravity="center"
-        android:padding="8dp"
-        android:background="@color/blue_grey"
-        android:textColor="@android:color/white" />
     
     <com.example.repview.SimpleLineChart
         android:id="@+id/lineChart"
