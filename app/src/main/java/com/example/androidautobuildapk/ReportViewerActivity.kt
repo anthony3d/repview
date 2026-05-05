@@ -16,10 +16,10 @@ import java.util.*
 class ReportViewerActivity : AppCompatActivity() {
     
     private lateinit var tableLayout: TableLayout
+    private lateinit var lineChart: SimpleLineChart
     private val dateFormat = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
-    private val currentDate = Date() // Текущая дата
+    private val currentDate = Date()
     
-    // Класс для хранения данных по неделе
     data class WeekData(
         val startDate: Date,
         val endDate: Date,
@@ -31,6 +31,7 @@ class ReportViewerActivity : AppCompatActivity() {
         setContentView(R.layout.activity_report_viewer)
         
         tableLayout = findViewById(R.id.tableLayout)
+        lineChart = findViewById(R.id.lineChart)
         
         when {
             intent?.action == Intent.ACTION_SEND -> {
@@ -51,32 +52,26 @@ class ReportViewerActivity : AppCompatActivity() {
     
     private fun processFile(uri: Uri) {
         try {
-            // Читаем файл напрямую из URI без создания временного файла
             val inputStream = contentResolver.openInputStream(uri)
             val workbook = WorkbookFactory.create(inputStream)
             val sheet = workbook.getSheetAt(0)
             
-            // Получаем последний столбец
             val headerRow = sheet.getRow(0)
             val lastColumnIndex = headerRow.lastCellNum - 1
             val preLastColumnIndex = lastColumnIndex - 1
             
-            // Собираем данные из строк
             val weekMap = mutableMapOf<String, WeekData>()
             
-            // Определяем начальную строку (пропускаем заголовок)
             val startRow = 1
-            // Берем последние 100 строк
             val totalRows = sheet.physicalNumberOfRows
             val endRow = minOf(totalRows - 1, startRow + 99)
             
             for (i in startRow..endRow) {
                 val row = sheet.getRow(i) ?: continue
                 
-                // Получаем столбцы (индексация с 0)
-                val startDateCell = row.getCell(2) // Столбец 3
-                val endDateCell = row.getCell(3)   // Столбец 4
-                val numberCell = row.getCell(preLastColumnIndex) // Предпоследний столбец
+                val startDateCell = row.getCell(2)
+                val endDateCell = row.getCell(3)
+                val numberCell = row.getCell(preLastColumnIndex)
                 
                 val startDate = parseDate(startDateCell)
                 val endDate = parseDate(endDateCell)
@@ -91,14 +86,11 @@ class ReportViewerActivity : AppCompatActivity() {
                 }
                 
                 if (startDate != null && endDate != null) {
-                    // Создаем ключ из дат
                     val key = "${dateFormat.format(startDate)}|${dateFormat.format(endDate)}"
                     
                     if (weekMap.containsKey(key)) {
-                        // Суммируем
                         weekMap[key]?.sumValue = weekMap[key]!!.sumValue + number
                     } else {
-                        // Добавляем новую запись
                         weekMap[key] = WeekData(startDate, endDate, number)
                     }
                 }
@@ -113,7 +105,6 @@ class ReportViewerActivity : AppCompatActivity() {
                 return
             }
             
-            // Отображаем таблицу
             displayTable(weekMap.values.toList())
             
         } catch (e: Exception) {
@@ -172,14 +163,15 @@ class ReportViewerActivity : AppCompatActivity() {
     private fun displayTable(weekDataList: List<WeekData>) {
         addTableHeader()
         
+        val chartData = mutableListOf<SimpleLineChart.DataPoint>()
+        
         for (week in weekDataList) {
             val startDateStr = dateFormat.format(week.startDate)
             val endDateStr = dateFormat.format(week.endDate)
             val sumValue = week.sumValue.toString()
-            val orderDate = addWeeks(week.startDate, 4)  // Заказ (+4 недели)
-            val paymentDate = addWeeks(week.startDate, 5) // Получка (+5 недель)
+            val orderDate = addWeeks(week.startDate, 4)
+            val paymentDate = addWeeks(week.startDate, 5)
             
-            // Проверяем, попадает ли текущая дата в интервал между Заказом и Получкой
             val isInRange = isCurrentDateInRange(orderDate, paymentDate)
             
             addDataRow(
@@ -190,38 +182,40 @@ class ReportViewerActivity : AppCompatActivity() {
                 dateFormat.format(paymentDate),
                 isInRange
             )
+            
+            // Добавляем данные для графика (дата получения и сумма)
+            chartData.add(SimpleLineChart.DataPoint(paymentDate, week.sumValue))
         }
+        
+        // Отображаем график
+        lineChart.setData(chartData)
     }
     
     private fun addTableHeader() {
-        // Первая строка с общим заголовком для первых двух столбцов
         val headerRow1 = TableRow(this)
         
-        // Создаем объединенный заголовок "Неделя" для первых двух столбцов
         val weekHeader = TextView(this).apply {
             text = "Неделя"
             setPadding(16, 12, 16, 12)
             setTextColor(Color.WHITE)
-            setBackgroundColor(Color.rgb(33, 150, 243)) // Material Blue
+            setBackgroundColor(Color.rgb(33, 150, 243))
             textSize = 14f
             gravity = android.view.Gravity.CENTER
         }
         
-        // Растягиваем на 2 столбца
         val weekHeaderSpan = TableRow.LayoutParams().apply {
             span = 2
         }
         weekHeader.layoutParams = weekHeaderSpan
         headerRow1.addView(weekHeader)
         
-        // Остальные заголовки
         val headers = arrayOf("Сумма", "Заказ", "Получка")
         for (header in headers) {
             val tv = TextView(this).apply {
                 text = header
                 setPadding(16, 12, 16, 12)
                 setTextColor(Color.WHITE)
-                setBackgroundColor(Color.rgb(33, 150, 243)) // Material Blue
+                setBackgroundColor(Color.rgb(33, 150, 243))
                 textSize = 14f
                 gravity = android.view.Gravity.CENTER
             }
@@ -229,7 +223,6 @@ class ReportViewerActivity : AppCompatActivity() {
         }
         tableLayout.addView(headerRow1)
         
-        // Вторая строка заголовков для подзаголовков
         val headerRow2 = TableRow(this)
         val subHeaders = arrayOf("Начало", "Конец", "", "", "")
         
@@ -238,7 +231,7 @@ class ReportViewerActivity : AppCompatActivity() {
                 text = subHeader
                 setPadding(16, 8, 16, 8)
                 setTextColor(Color.WHITE)
-                setBackgroundColor(Color.rgb(100, 181, 246)) // Light Blue
+                setBackgroundColor(Color.rgb(100, 181, 246))
                 textSize = 12f
                 gravity = android.view.Gravity.CENTER
             }
@@ -260,27 +253,25 @@ class ReportViewerActivity : AppCompatActivity() {
                 setTextIsSelectable(true)
                 
                 when {
-                    index < 2 -> { // Первые два столбца (Неделя)
+                    index < 2 -> {
                         setBackgroundColor(Color.WHITE)
                         setTextColor(Color.BLACK)
                     }
-                    index == 2 -> { // Сумма
-                        setBackgroundColor(Color.rgb(255, 193, 7)) // Amber
+                    index == 2 -> {
+                        setBackgroundColor(Color.rgb(255, 193, 7))
                         setTextColor(Color.BLACK)
                         textSize = 14f
                     }
-                    index >= 3 -> { // 4-й и 5-й столбцы (Заказ и Получка)
+                    index >= 3 -> {
                         if (highlightColumns45) {
-                            // Подсветка зеленым, если текущая дата в интервале
-                            setBackgroundColor(Color.rgb(76, 175, 80)) // Material Green
+                            setBackgroundColor(Color.rgb(76, 175, 80))
                             setTextColor(Color.WHITE)
                             textSize = 13f
                         } else {
-                            // Обычный вид
                             if (index % 2 == 0) {
                                 setBackgroundColor(Color.WHITE)
                             } else {
-                                setBackgroundColor(Color.rgb(245, 245, 245)) // Light gray
+                                setBackgroundColor(Color.rgb(245, 245, 245))
                             }
                             setTextColor(Color.BLACK)
                         }
