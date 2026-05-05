@@ -164,7 +164,8 @@ class ReportViewerActivity : AppCompatActivity() {
     }
     
     private fun processDailyReport(allRowsData: List<Triple<Date?, Date?, Int>>, lastDate: Date?) {
-        val dailyDataList = mutableListOf<DailyData>()
+        // Сначала суммируем значения за один день
+        val dailySumMap = mutableMapOf<Date, Int>()
         val weekGroups = mutableMapOf<Date, MutableList<Int>>()
         
         for (data in allRowsData) {
@@ -176,14 +177,16 @@ class ReportViewerActivity : AppCompatActivity() {
                 continue
             }
             
-            dailyDataList.add(DailyData(startDate, number))
+            // Суммируем значения за день
+            dailySumMap[startDate] = dailySumMap.getOrDefault(startDate, 0) + number
             
+            // Группируем по неделям для отображения заказа/получки
             val weekStart = getWeekStart(startDate)
             weekGroups.getOrPut(weekStart) { mutableListOf() }.add(number)
         }
         
-        // Сортируем по дате
-        dailyDataList.sortBy { it.date }
+        // Преобразуем в список DailyData
+        val dailyDataList = dailySumMap.map { (date, sum) -> DailyData(date, sum) }.sortedBy { it.date }
         
         if (dailyDataList.isEmpty()) {
             Toast.makeText(this, "Нет данных для отображения", Toast.LENGTH_SHORT).show()
@@ -314,6 +317,7 @@ class ReportViewerActivity : AppCompatActivity() {
             val isInRange = orderDateObj != null && paymentDateObj != null && 
                             isCurrentDateInRange(orderDateObj, paymentDateObj)
             
+            // Показываем заказ и получку только для первого дня недели
             val orderDisplay = if (index == 0 || getWeekStart(dailyDataList[index - 1].date) != weekStart) {
                 weekOrderDate
             } else {
@@ -328,6 +332,7 @@ class ReportViewerActivity : AppCompatActivity() {
             
             addDailyDataRow(dateStr, valueStr, orderDisplay, paymentDisplay, isInRange)
             
+            // Для графика используем сумму за день
             chartData.add(SimpleLineChart.DataPoint(daily.date, daily.value))
         }
         
