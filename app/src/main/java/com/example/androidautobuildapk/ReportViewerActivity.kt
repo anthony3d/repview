@@ -20,6 +20,11 @@ class ReportViewerActivity : AppCompatActivity() {
     private val dateFormat = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
     private val currentDate = Date()
     
+    enum class ReportType {
+        WEEKLY,   // Еженедельный (даты начала и конца недели разные)
+        DAILY     // Ежедневный (даты начала и конца недели одинаковые)
+    }
+    
     data class WeekData(
         val startDate: Date,
         val endDate: Date,
@@ -60,7 +65,7 @@ class ReportViewerActivity : AppCompatActivity() {
             val lastColumnIndex = headerRow.lastCellNum - 1
             val preLastColumnIndex = lastColumnIndex - 1
             
-            val weekMap = mutableMapOf<String, WeekData>()
+            val dataList = mutableListOf<WeekData>()
             
             val startRow = 1
             val totalRows = sheet.physicalNumberOfRows
@@ -86,26 +91,31 @@ class ReportViewerActivity : AppCompatActivity() {
                 }
                 
                 if (startDate != null && endDate != null) {
-                    val key = "${dateFormat.format(startDate)}|${dateFormat.format(endDate)}"
-                    
-                    if (weekMap.containsKey(key)) {
-                        weekMap[key]?.sumValue = weekMap[key]!!.sumValue + number
-                    } else {
-                        weekMap[key] = WeekData(startDate, endDate, number)
-                    }
+                    dataList.add(WeekData(startDate, endDate, number))
                 }
             }
             
             workbook.close()
             inputStream?.close()
             
-            if (weekMap.isEmpty()) {
+            if (dataList.isEmpty()) {
                 Toast.makeText(this, "Нет данных для отображения", Toast.LENGTH_SHORT).show()
                 finish()
                 return
             }
             
-            displayTable(weekMap.values.toList())
+            // Определяем тип отчета по первой строке
+            val reportType = if (isSameDay(dataList[0].startDate, dataList[0].endDate)) {
+                ReportType.DAILY
+            } else {
+                ReportType.WEEKLY
+            }
+            
+            if (reportType == ReportType.WEEKLY) {
+                processWeeklyReport(dataList)
+            } else {
+                processDailyReport(dataList)
+            }
             
         } catch (e: Exception) {
             e.printStackTrace()
@@ -113,57 +123,77 @@ class ReportViewerActivity : AppCompatActivity() {
         }
     }
     
-    private fun parseDate(cell: org.apache.poi.ss.usermodel.Cell?): Date? {
-        if (cell == null) return null
-        
-        return try {
-            when (cell.cellType) {
-                org.apache.poi.ss.usermodel.CellType.NUMERIC -> {
-                    if (org.apache.poi.ss.usermodel.DateUtil.isCellDateFormatted(cell)) {
-                        cell.dateCellValue
-                    } else {
-                        null
-                    }
-                }
-                org.apache.poi.ss.usermodel.CellType.STRING -> {
-                    val dateStr = cell.stringCellValue.trim()
-                    val formats = listOf(
-                        SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()),
-                        SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()),
-                        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()),
-                        SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
-                    )
-                    for (format in formats) {
-                        try {
-                            return format.parse(dateStr)
-                        } catch (e: Exception) {
-                            // Пробуем следующий формат
-                        }
-                    }
-                    null
-                }
-                else -> null
-            }
-        } catch (e: Exception) {
-            null
-        }
+    private fun isSameDay(date1: Date, date2: Date): Boolean {
+        val cal1 = Calendar.getInstance().apply { time = date1 }
+        val cal2 = Calendar.getInstance().apply { time = date2 }
+        return cal1.get(Calendar.YEAR) == cal2.get(Calendar.YEAR) &&
+               cal1.get(Calendar.DAY_OF_YEAR) == cal2.get(Calendar.DAY_OF_YEAR)
     }
     
-    private fun addWeeks(date: Date, weeks: Int): Date {
+    private fun processWeeklyReport(dataList: List<WeekData>) {
+        // Группируем по неделям
+        val weekMap = mutableMapOf<String, WeekData>()
+        
+        for (data in dataList) {
+            val key = "${dateFormat.format(data.startDate)}|${dateFormat.format(data.endDate)}"
+            
+            if (weekMap.containsKey(key)) {
+                weekMap[key]?.sumValue = weekMap[key]!!.sumValue + data.sumValue
+            } else {
+                weekMap[key] = WeekData(data.startDate, data.endDate, data.sumValue)
+            }
+        }
+        
+        displayWeeklyTable(weekMap.values.toList())
+        
+        // Данные для графика
+        val chartData = weekMap.values.map { 
+            SimpleLineChart.DataPoint(addWeeks(it.startDate, 5), it.sumValue) 
+        }
+        lineChart.setData(chartData)
+    }
+    
+    private fun processDailyReport(dataList: List<WeekData>) {
+        // Группируем по дням (суммируем значения за один день)
+        val dailyMap = mutableMapOf<String, WeekData>()
+        
+        for (data in dataList) {
+            val key = dateFormat.format(data.startDate)
+            
+            if (dailyMap.containsKey(key)) {
+                dailyMap[key]?.sumValue = dailyMap[key]!!.sumValue + data.sumValue
+            } else {
+                dailyMap[key] = WeekData(data.startDate, data.endDate, data.sumValue)
+            }
+        }
+        
+        val dailyList = dailyMap.values.toList()
+        
+        // Находим первый понедельник для расчета +4 и +5 недель
+        val firstMonday = getMondayOfWeek(dailyList[0].startDate)
+        
+        displayDailyTable(dailyList, firstMonday)
+        
+        // Данные для графика (все даты строк)
+        val chartData = dailyList.map { 
+            SimpleLineChart.DataPoint(it.startDate, it.sumValue) 
+        }
+        lineChart.setData(chartData)
+    }
+    
+    private fun getMondayOfWeek(date: Date): Date {
         val calendar = Calendar.getInstance()
         calendar.time = date
-        calendar.add(Calendar.WEEK_OF_YEAR, weeks)
+        // Переводим на понедельник
+        val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
+        var daysToMonday = dayOfWeek - Calendar.MONDAY
+        if (daysToMonday < 0) daysToMonday += 7
+        calendar.add(Calendar.DAY_OF_YEAR, -daysToMonday)
         return calendar.time
     }
     
-    private fun isCurrentDateInRange(startDate: Date, endDate: Date): Boolean {
-        return currentDate in startDate..endDate
-    }
-    
-    private fun displayTable(weekDataList: List<WeekData>) {
-        addTableHeader()
-        
-        val chartData = mutableListOf<SimpleLineChart.DataPoint>()
+    private fun displayWeeklyTable(weekDataList: List<WeekData>) {
+        addWeeklyHeader()
         
         for (week in weekDataList) {
             val startDateStr = dateFormat.format(week.startDate)
@@ -174,7 +204,7 @@ class ReportViewerActivity : AppCompatActivity() {
             
             val isInRange = isCurrentDateInRange(orderDate, paymentDate)
             
-            addDataRow(
+            addWeeklyDataRow(
                 startDateStr,
                 endDateStr,
                 sumValue,
@@ -182,15 +212,37 @@ class ReportViewerActivity : AppCompatActivity() {
                 dateFormat.format(paymentDate),
                 isInRange
             )
-            
-            // Добавляем данные для графика
-            chartData.add(SimpleLineChart.DataPoint(paymentDate, week.sumValue))
         }
-        
-        lineChart.setData(chartData)
     }
     
-    private fun addTableHeader() {
+    private fun displayDailyTable(dailyList: List<WeekData>, firstMonday: Date) {
+        addDailyHeader()
+        
+        val mondayPlus4 = addWeeks(firstMonday, 4)
+        val mondayPlus5 = addWeeks(firstMonday, 5)
+        val orderDateStr = dateFormat.format(mondayPlus4)
+        val paymentDateStr = dateFormat.format(mondayPlus5)
+        val isInRange = isCurrentDateInRange(mondayPlus4, mondayPlus5)
+        
+        // Показываем только первую пару для всего отчета
+        var rangeShown = false
+        
+        for (day in dailyList) {
+            val dateStr = dateFormat.format(day.startDate)
+            val sumValue = day.sumValue.toString()
+            
+            addDailyDataRow(
+                dateStr,
+                sumValue,
+                if (!rangeShown) orderDateStr else "",
+                if (!rangeShown) paymentDateStr else "",
+                isInRange && !rangeShown
+            )
+            rangeShown = true
+        }
+    }
+    
+    private fun addWeeklyHeader() {
         val headerRow1 = TableRow(this)
         
         val weekHeader = TextView(this).apply {
@@ -239,7 +291,35 @@ class ReportViewerActivity : AppCompatActivity() {
         tableLayout.addView(headerRow2)
     }
     
-    private fun addDataRow(col1: String, col2: String, col3: String, col4: String, col5: String, highlightColumns45: Boolean) {
+    private fun addDailyHeader() {
+        val headerRow1 = TableRow(this)
+        
+        val dateHeader = TextView(this).apply {
+            text = "Дата"
+            setPadding(16, 12, 16, 12)
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.rgb(33, 150, 243))
+            textSize = 14f
+            gravity = android.view.Gravity.CENTER
+        }
+        headerRow1.addView(dateHeader)
+        
+        val headers = arrayOf("Сумма", "Заказ", "Получка")
+        for (header in headers) {
+            val tv = TextView(this).apply {
+                text = header
+                setPadding(16, 12, 16, 12)
+                setTextColor(Color.WHITE)
+                setBackgroundColor(Color.rgb(33, 150, 243))
+                textSize = 14f
+                gravity = android.view.Gravity.CENTER
+            }
+            headerRow1.addView(tv)
+        }
+        tableLayout.addView(headerRow1)
+    }
+    
+    private fun addWeeklyDataRow(col1: String, col2: String, col3: String, col4: String, col5: String, highlightColumns45: Boolean) {
         val row = TableRow(this)
         val data = arrayOf(col1, col2, col3, col4, col5)
         
@@ -280,5 +360,99 @@ class ReportViewerActivity : AppCompatActivity() {
             row.addView(tv)
         }
         tableLayout.addView(row)
+    }
+    
+    private fun addDailyDataRow(col1: String, col2: String, col3: String, col4: String, highlightColumns34: Boolean) {
+        val row = TableRow(this)
+        val data = arrayOf(col1, col2, col3, col4)
+        
+        for ((index, value) in data.withIndex()) {
+            val tv = TextView(this).apply {
+                text = value
+                setPadding(16, 12, 16, 12)
+                textSize = 12f
+                gravity = android.view.Gravity.CENTER
+                setTextIsSelectable(true)
+                
+                when {
+                    index == 0 -> {
+                        setBackgroundColor(Color.WHITE)
+                        setTextColor(Color.BLACK)
+                    }
+                    index == 1 -> {
+                        setBackgroundColor(Color.rgb(255, 193, 7))
+                        setTextColor(Color.BLACK)
+                        textSize = 14f
+                    }
+                    index >= 2 -> {
+                        if (highlightColumns34 && value.isNotEmpty()) {
+                            setBackgroundColor(Color.rgb(76, 175, 80))
+                            setTextColor(Color.WHITE)
+                            textSize = 13f
+                        } else {
+                            if (value.isEmpty()) {
+                                setBackgroundColor(Color.rgb(240, 240, 240))
+                                setTextColor(Color.GRAY)
+                            } else if (index % 2 == 0) {
+                                setBackgroundColor(Color.WHITE)
+                                setTextColor(Color.BLACK)
+                            } else {
+                                setBackgroundColor(Color.rgb(245, 245, 245))
+                                setTextColor(Color.BLACK)
+                            }
+                        }
+                    }
+                }
+            }
+            row.addView(tv)
+        }
+        tableLayout.addView(row)
+    }
+    
+    private fun parseDate(cell: org.apache.poi.ss.usermodel.Cell?): Date? {
+        if (cell == null) return null
+        
+        return try {
+            when (cell.cellType) {
+                org.apache.poi.ss.usermodel.CellType.NUMERIC -> {
+                    if (org.apache.poi.ss.usermodel.DateUtil.isCellDateFormatted(cell)) {
+                        cell.dateCellValue
+                    } else {
+                        null
+                    }
+                }
+                org.apache.poi.ss.usermodel.CellType.STRING -> {
+                    val dateStr = cell.stringCellValue.trim()
+                    val formats = listOf(
+                        SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()),
+                        SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()),
+                        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()),
+                        SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
+                    )
+                    for (format in formats) {
+                        try {
+                            return format.parse(dateStr)
+                        } catch (e: Exception) {
+                            // Пробуем следующий формат
+                        }
+                    }
+                    null
+                }
+                else -> null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+    
+    private fun addWeeks(date: Date, weeks: Int): Date {
+        val calendar = Calendar.getInstance()
+        calendar.time = date
+        calendar.add(Calendar.WEEK_OF_YEAR, weeks)
+        return calendar.time
+    }
+    
+    private fun isCurrentDateInRange(startDate: Date, endDate: Date): Boolean {
+        return currentDate in startDate..endDate
     }
 }
