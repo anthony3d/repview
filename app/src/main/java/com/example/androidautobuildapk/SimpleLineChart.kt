@@ -14,9 +14,18 @@ class SimpleLineChart @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
     
     private var dataPoints = mutableListOf<DataPoint>()
+    private var movingAveragePoints = mutableListOf<DataPoint>() // Скользящее среднее
+    private var isDailyReport = false
+    
     private val paintLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.rgb(76, 175, 80)
         strokeWidth = 4f
+        style = Paint.Style.STROKE
+    }
+    
+    private val paintAverageLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(255, 87, 34) // Оранжевый для скользящего среднего
+        strokeWidth = 3f
         style = Paint.Style.STROKE
     }
     
@@ -36,6 +45,11 @@ class SimpleLineChart @JvmOverloads constructor(
         style = Paint.Style.STROKE
     }
     
+    private val paintWeekend = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(80, 255, 193, 7) // Полупрозрачный желтый
+        style = Paint.Style.FILL
+    }
+    
     private val dateFormat = SimpleDateFormat("dd.MM", Locale.getDefault())
     
     data class DataPoint(
@@ -43,9 +57,45 @@ class SimpleLineChart @JvmOverloads constructor(
         val value: Int
     )
     
-    fun setData(data: List<DataPoint>) {
+    fun setData(data: List<DataPoint>, isDaily: Boolean = false) {
         dataPoints = data.toMutableList()
+        isDailyReport = isDaily
+        
+        // Рассчитываем скользящее среднее (окно 7 дней)
+        if (isDailyReport && dataPoints.size >= 3) {
+            calculateMovingAverage()
+        } else {
+            movingAveragePoints.clear()
+        }
+        
         invalidate()
+    }
+    
+    private fun calculateMovingAverage() {
+        movingAveragePoints.clear()
+        val windowSize = 7 // Окно в 7 дней
+        
+        for (i in dataPoints.indices) {
+            var sum = 0
+            var count = 0
+            val start = maxOf(0, i - windowSize / 2)
+            val end = minOf(dataPoints.size - 1, i + windowSize / 2)
+            
+            for (j in start..end) {
+                sum += dataPoints[j].value
+                count++
+            }
+            
+            val average = if (count > 0) sum / count else 0
+            movingAveragePoints.add(DataPoint(dataPoints[i].date, average))
+        }
+    }
+    
+    private fun isWeekend(date: Date): Boolean {
+        val calendar = Calendar.getInstance()
+        calendar.time = date
+        val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
+        return dayOfWeek == Calendar.SATURDAY || dayOfWeek == Calendar.SUNDAY
     }
     
     override fun onDraw(canvas: Canvas) {
@@ -79,13 +129,24 @@ class SimpleLineChart @JvmOverloads constructor(
         val minValue = dataPoints.minOfOrNull { it.value } ?: 0
         val valueRange = if (maxValue == minValue) 1f else (maxValue - minValue).toFloat()
         
+        // Рисуем фоновую подсветку выходных (только для ежедневного отчета)
+        if (isDailyReport && dataPoints.size > 1) {
+            for ((index, point) in dataPoints.withIndex()) {
+                if (isWeekend(point.date)) {
+                    val x1 = paddingLeft + (index * chartWidth / (dataPoints.size - 1).coerceAtLeast(1))
+                    val x2 = paddingLeft + ((index + 1) * chartWidth / (dataPoints.size - 1).coerceAtLeast(1))
+                    canvas.drawRect(x1, paddingTop, x2, paddingTop + chartHeight, paintWeekend)
+                }
+            }
+        }
+        
         // Рисуем сетку
         drawGrid(canvas, paddingLeft, paddingTop, chartWidth, chartHeight, maxValue, minValue)
         
         // Рисуем оси
         drawAxes(canvas, paddingLeft, paddingTop, chartWidth, chartHeight)
         
-        // Рисуем точки и линии
+        // Рисуем точки и линии для основных данных
         val points = mutableListOf<Pair<Float, Float>>()
         
         for ((index, point) in dataPoints.withIndex()) {
@@ -95,10 +156,10 @@ class SimpleLineChart @JvmOverloads constructor(
             points.add(x to y)
             
             // Рисуем точку
-            canvas.drawCircle(x, y, 8f, paintPoint)
+            canvas.drawCircle(x, y, 6f, paintPoint)
         }
         
-        // Рисуем линию
+        // Рисуем линию основных данных
         if (points.size > 1) {
             for (i in 0 until points.size - 1) {
                 canvas.drawLine(
@@ -109,16 +170,52 @@ class SimpleLineChart @JvmOverloads constructor(
             }
         }
         
-        // Рисуем даты на горизонтальной оси (каждую пятую)
-        paintText.textSize = 24f
+        // Рисуем линию скользящего среднего
+        if (movingAveragePoints.isNotEmpty() && movingAveragePoints.size > 1) {
+            val avgPoints = mutableListOf<Pair<Float, Float>>()
+            
+            for ((index, point) in movingAveragePoints.withIndex()) {
+                val x = paddingLeft + (index * chartWidth / (movingAveragePoints.size - 1).coerceAtLeast(1))
+                val y = paddingTop + chartHeight - ((point.value - minValue) / valueRange * chartHeight)
+                avgPoints.add(x to y)
+            }
+            
+            for (i in 0 until avgPoints.size - 1) {
+                canvas.drawLine(
+                    avgPoints[i].first, avgPoints[i].second,
+                    avgPoints[i + 1].first, avgPoints[i + 1].second,
+                    paintAverageLine
+                )
+            }
+            
+            // Рисуем точки скользящего среднего
+            for (point in avgPoints) {
+                canvas.drawCircle(point.first, point.second, 4f, paintAverageLine)
+            }
+        }
+        
+        // Рисуем даты на горизонтальной оси
+        paintText.textSize = 22f
         paintText.color = Color.BLACK
+        val step = maxOf(1, dataPoints.size / 10)
+        
         for ((index, point) in dataPoints.withIndex()) {
-            if (index % 5 == 0 || index == dataPoints.size - 1) {
+            if (index % step == 0 || index == dataPoints.size - 1) {
                 val x = paddingLeft + (index * chartWidth / (dataPoints.size - 1).coerceAtLeast(1))
                 val dateText = dateFormat.format(point.date)
                 val dateWidth = paintText.measureText(dateText)
                 canvas.drawText(dateText, x - dateWidth / 2, height - paddingBottom + 25f, paintText)
             }
+        }
+        
+        // Добавляем легенду для скользящего среднего
+        if (movingAveragePoints.isNotEmpty()) {
+            paintText.textSize = 20f
+            paintText.color = Color.rgb(255, 87, 34)
+            canvas.drawText("--- Скользящее среднее (7 дней)", width - 220f, 30f, paintText)
+            
+            paintText.color = Color.rgb(76, 175, 80)
+            canvas.drawText("--- Данные", width - 220f, 55f, paintText)
         }
     }
     
@@ -146,7 +243,8 @@ class SimpleLineChart @JvmOverloads constructor(
         
         // Вертикальные линии сетки
         if (dataPoints.size > 1) {
-            for (i in 0 until dataPoints.size) {
+            val step = maxOf(1, dataPoints.size / 10)
+            for (i in 0 until dataPoints.size step step) {
                 val x = paddingLeft + (i * chartWidth / (dataPoints.size - 1))
                 canvas.drawLine(x, paddingTop, x, paddingTop + chartHeight, paintGrid)
             }
