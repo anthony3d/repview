@@ -290,7 +290,7 @@ class ReportViewerActivity : AppCompatActivity() {
             chartData.add(SimpleLineChart.DataPoint(paymentDate, week.sumValue))
         }
         
-        lineChart.setData(chartData)
+        lineChart.setData(chartData, false)
     }
     
     private fun displayDailyTable(dailyDataList: List<DailyData>, weekGroups: Map<Date, List<Int>>) {
@@ -336,7 +336,7 @@ class ReportViewerActivity : AppCompatActivity() {
             chartData.add(SimpleLineChart.DataPoint(daily.date, daily.value))
         }
         
-        lineChart.setData(chartData)
+        lineChart.setData(chartData, true)
     }
     
     private fun parseDateFromString(dateStr: String): Date? {
