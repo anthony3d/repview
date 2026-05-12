@@ -4,7 +4,6 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
-import android.widget.LinearLayout
 import android.widget.TableLayout
 import android.widget.TableRow
 import android.widget.TextView
@@ -18,10 +17,6 @@ class ReportViewerActivity : AppCompatActivity() {
     
     private lateinit var tableLayout: TableLayout
     private lateinit var lineChart: SimpleLineChart
-    private lateinit var infoBlock: LinearLayout
-    private lateinit var weekValueText: TextView
-    private lateinit var monthValueText: TextView
-    
     private val dateFormat = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
     private val currentDate = Date()
     
@@ -47,9 +42,6 @@ class ReportViewerActivity : AppCompatActivity() {
         
         tableLayout = findViewById(R.id.tableLayout)
         lineChart = findViewById(R.id.lineChart)
-        infoBlock = findViewById(R.id.infoBlock)
-        weekValueText = findViewById(R.id.weekValue)
-        monthValueText = findViewById(R.id.monthValue)
         
         when {
             intent?.action == Intent.ACTION_SEND -> {
@@ -168,9 +160,6 @@ class ReportViewerActivity : AppCompatActivity() {
             return
         }
         
-        // Для еженедельного отчета скрываем блок "С начала недели"
-        infoBlock.visibility = LinearLayout.GONE
-        
         displayWeeklyTable(weekMap.values.toList())
     }
     
@@ -205,47 +194,7 @@ class ReportViewerActivity : AppCompatActivity() {
             return
         }
         
-        // Рассчитываем статистику
-        calculateAndDisplayStats(dailyDataList)
-        
         displayDailyTable(dailyDataList, weekGroups)
-    }
-    
-    private fun calculateAndDisplayStats(dailyDataList: List<DailyData>) {
-        // Показываем информационный блок
-        infoBlock.visibility = LinearLayout.VISIBLE
-        
-        val calendar = Calendar.getInstance()
-        calendar.time = currentDate
-        
-        // Находим начало текущей недели (понедельник)
-        val weekStart = getWeekStart(currentDate)
-        
-        // Находим начало текущего месяца
-        val monthStart = Calendar.getInstance().apply {
-            time = currentDate
-            set(Calendar.DAY_OF_MONTH, 1)
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.time
-        
-        // Суммируем значения с начала недели
-        var weekSum = 0
-        var monthSum = 0
-        
-        for (data in dailyDataList) {
-            if (data.date >= weekStart) {
-                weekSum += data.value
-            }
-            if (data.date >= monthStart) {
-                monthSum += data.value
-            }
-        }
-        
-        weekValueText.text = weekSum.toString()
-        monthValueText.text = monthSum.toString()
     }
     
     private fun getWeekStart(date: Date): Date {
@@ -341,7 +290,7 @@ class ReportViewerActivity : AppCompatActivity() {
             chartData.add(SimpleLineChart.DataPoint(paymentDate, week.sumValue))
         }
         
-        lineChart.setData(chartData, false)
+        lineChart.setData(chartData)
     }
     
     private fun displayDailyTable(dailyDataList: List<DailyData>, weekGroups: Map<Date, List<Int>>) {
@@ -387,7 +336,7 @@ class ReportViewerActivity : AppCompatActivity() {
             chartData.add(SimpleLineChart.DataPoint(daily.date, daily.value))
         }
         
-        lineChart.setData(chartData, true)
+        lineChart.setData(chartData)
     }
     
     private fun parseDateFromString(dateStr: String): Date? {
