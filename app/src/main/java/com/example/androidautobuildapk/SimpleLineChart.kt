@@ -14,7 +14,7 @@ class SimpleLineChart @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
     
     private var dataPoints = mutableListOf<DataPoint>()
-    private var movingAveragePoints = mutableListOf<DataPoint>() // Скользящее среднее
+    private var movingAveragePoints = mutableListOf<DataPoint>()
     private var isDailyReport = false
     
     private val paintLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -24,7 +24,7 @@ class SimpleLineChart @JvmOverloads constructor(
     }
     
     private val paintAverageLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.rgb(255, 87, 34) // Оранжевый для скользящего среднего
+        color = Color.rgb(255, 87, 34)
         strokeWidth = 3f
         style = Paint.Style.STROKE
     }
@@ -46,7 +46,7 @@ class SimpleLineChart @JvmOverloads constructor(
     }
     
     private val paintWeekend = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(80, 255, 193, 7) // Полупрозрачный желтый
+        color = Color.argb(80, 255, 193, 7)
         style = Paint.Style.FILL
     }
     
@@ -61,7 +61,6 @@ class SimpleLineChart @JvmOverloads constructor(
         dataPoints = data.toMutableList()
         isDailyReport = isDaily
         
-        // Рассчитываем скользящее среднее (окно 7 дней)
         if (isDailyReport && dataPoints.size >= 3) {
             calculateMovingAverage()
         } else {
@@ -73,7 +72,7 @@ class SimpleLineChart @JvmOverloads constructor(
     
     private fun calculateMovingAverage() {
         movingAveragePoints.clear()
-        val windowSize = 7 // Окно в 7 дней
+        val windowSize = 7
         
         for (i in dataPoints.indices) {
             var sum = 0
@@ -96,6 +95,13 @@ class SimpleLineChart @JvmOverloads constructor(
         calendar.time = date
         val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
         return dayOfWeek == Calendar.SATURDAY || dayOfWeek == Calendar.SUNDAY
+    }
+    
+    private fun addDays(date: Date, days: Int): Date {
+        val calendar = Calendar.getInstance()
+        calendar.time = date
+        calendar.add(Calendar.DAY_OF_YEAR, days)
+        return calendar.time
     }
     
     override fun onDraw(canvas: Canvas) {
@@ -131,11 +137,28 @@ class SimpleLineChart @JvmOverloads constructor(
         
         // Рисуем фоновую подсветку выходных (только для ежедневного отчета)
         if (isDailyReport && dataPoints.size > 1) {
-            for ((index, point) in dataPoints.withIndex()) {
-                if (isWeekend(point.date)) {
-                    val x1 = paddingLeft + (index * chartWidth / (dataPoints.size - 1).coerceAtLeast(1))
-                    val x2 = paddingLeft + ((index + 1) * chartWidth / (dataPoints.size - 1).coerceAtLeast(1))
-                    canvas.drawRect(x1, paddingTop, x2, paddingTop + chartHeight, paintWeekend)
+            var i = 0
+            while (i < dataPoints.size) {
+                val currentPoint = dataPoints[i]
+                if (isWeekend(currentPoint.date)) {
+                    // Находим начало выходных (суббота)
+                    val startX = paddingLeft + (i * chartWidth / (dataPoints.size - 1).coerceAtLeast(1))
+                    
+                    // Находим конец выходных (воскресенье)
+                    var endIndex = i
+                    while (endIndex < dataPoints.size && isWeekend(dataPoints[endIndex].date)) {
+                        endIndex++
+                    }
+                    endIndex--
+                    
+                    val endX = paddingLeft + ((endIndex + 1) * chartWidth / (dataPoints.size - 1).coerceAtLeast(1))
+                    
+                    // Закрашиваем область от субботы до понедельника (не включая понедельник)
+                    canvas.drawRect(startX, paddingTop, endX, paddingTop + chartHeight, paintWeekend)
+                    
+                    i = endIndex + 1
+                } else {
+                    i++
                 }
             }
         }
