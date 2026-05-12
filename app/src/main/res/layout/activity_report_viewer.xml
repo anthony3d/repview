@@ -28,9 +28,9 @@
         android:layout_height="1dp"
         android:background="@android:color/darker_gray" />
     
-    <!-- Информационный блок -->
+    <!-- Информационный блок для ежедневного отчета -->
     <LinearLayout
-        android:id="@+id/infoBlock"
+        android:id="@+id/dailyInfoBlock"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
@@ -46,20 +46,19 @@
             android:gravity="center">
             
             <TextView
-                android:id="@+id/weekLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="С начала недели:"
+                android:text="Эта неделя:"
                 android:textColor="@android:color/white"
-                android:textSize="14sp" />
+                android:textSize="12sp" />
             
             <TextView
-                android:id="@+id/weekValue"
+                android:id="@+id/thisWeekValue"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="0"
                 android:textColor="@android:color/white"
-                android:textSize="20sp"
+                android:textSize="18sp"
                 android:textStyle="bold" />
         </LinearLayout>
         
@@ -73,17 +72,124 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="С начала месяца:"
+                android:text="Прошлая неделя:"
                 android:textColor="@android:color/white"
-                android:textSize="14sp" />
+                android:textSize="12sp" />
             
             <TextView
-                android:id="@+id/monthValue"
+                android:id="@+id/lastWeekValue"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="0"
                 android:textColor="@android:color/white"
-                android:textSize="20sp"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+        
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center">
+            
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Этот месяц:"
+                android:textColor="@android:color/white"
+                android:textSize="12sp" />
+            
+            <TextView
+                android:id="@+id/thisMonthValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0"
+                android:textColor="@android:color/white"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+        
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center">
+            
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Прошлый месяц:"
+                android:textColor="@android:color/white"
+                android:textSize="12sp" />
+            
+            <TextView
+                android:id="@+id/lastMonthValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0"
+                android:textColor="@android:color/white"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+    
+    <!-- Информационный блок для еженедельного отчета -->
+    <LinearLayout
+        android:id="@+id/weeklyInfoBlock"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:background="@color/blue_grey"
+        android:visibility="gone">
+        
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center">
+            
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Последние 4 недели:"
+                android:textColor="@android:color/white"
+                android:textSize="12sp" />
+            
+            <TextView
+                android:id="@+id/last4WeeksValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0"
+                android:textColor="@android:color/white"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+        
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center">
+            
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Прошлые 4 недели:"
+                android:textColor="@android:color/white"
+                android:textSize="12sp" />
+            
+            <TextView
+                android:id="@+id/prev4WeeksValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0"
+                android:textColor="@android:color/white"
+                android:textSize="18sp"
                 android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>
