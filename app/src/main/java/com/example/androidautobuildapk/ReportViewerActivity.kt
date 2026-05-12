@@ -18,9 +18,18 @@ class ReportViewerActivity : AppCompatActivity() {
     
     private lateinit var tableLayout: TableLayout
     private lateinit var lineChart: SimpleLineChart
-    private lateinit var infoBlock: LinearLayout
-    private lateinit var weekValueText: TextView
-    private lateinit var monthValueText: TextView
+    private lateinit var dailyInfoBlock: LinearLayout
+    private lateinit var weeklyInfoBlock: LinearLayout
+    
+    // Daily views
+    private lateinit var thisWeekValue: TextView
+    private lateinit var lastWeekValue: TextView
+    private lateinit var thisMonthValue: TextView
+    private lateinit var lastMonthValue: TextView
+    
+    // Weekly views
+    private lateinit var last4WeeksValue: TextView
+    private lateinit var prev4WeeksValue: TextView
     
     private val dateFormat = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
     private val currentDate = Date()
@@ -47,9 +56,18 @@ class ReportViewerActivity : AppCompatActivity() {
         
         tableLayout = findViewById(R.id.tableLayout)
         lineChart = findViewById(R.id.lineChart)
-        infoBlock = findViewById(R.id.infoBlock)
-        weekValueText = findViewById(R.id.weekValue)
-        monthValueText = findViewById(R.id.monthValue)
+        dailyInfoBlock = findViewById(R.id.dailyInfoBlock)
+        weeklyInfoBlock = findViewById(R.id.weeklyInfoBlock)
+        
+        // Daily views
+        thisWeekValue = findViewById(R.id.thisWeekValue)
+        lastWeekValue = findViewById(R.id.lastWeekValue)
+        thisMonthValue = findViewById(R.id.thisMonthValue)
+        lastMonthValue = findViewById(R.id.lastMonthValue)
+        
+        // Weekly views
+        last4WeeksValue = findViewById(R.id.last4WeeksValue)
+        prev4WeeksValue = findViewById(R.id.prev4WeeksValue)
         
         when {
             intent?.action == Intent.ACTION_SEND -> {
@@ -168,10 +186,12 @@ class ReportViewerActivity : AppCompatActivity() {
             return
         }
         
-        // Для еженедельного отчета скрываем блок "С начала недели"
-        infoBlock.visibility = LinearLayout.GONE
+        val weekList = weekMap.values.toList()
         
-        displayWeeklyTable(weekMap.values.toList())
+        // Рассчитываем и показываем статистику для еженедельного отчета
+        calculateAndDisplayWeeklyStats(weekList)
+        
+        displayWeeklyTable(weekList)
     }
     
     private fun processDailyReport(allRowsData: List<Triple<Date?, Date?, Int>>, lastDate: Date?) {
@@ -205,24 +225,31 @@ class ReportViewerActivity : AppCompatActivity() {
             return
         }
         
-        // Рассчитываем статистику
-        calculateAndDisplayStats(dailyDataList)
+        // Рассчитываем и показываем статистику для ежедневного отчета
+        calculateAndDisplayDailyStats(dailyDataList)
         
         displayDailyTable(dailyDataList, weekGroups)
     }
     
-    private fun calculateAndDisplayStats(dailyDataList: List<DailyData>) {
-        // Показываем информационный блок
-        infoBlock.visibility = LinearLayout.VISIBLE
+    private fun calculateAndDisplayDailyStats(dailyDataList: List<DailyData>) {
+        // Показываем блок для ежедневного отчета
+        dailyInfoBlock.visibility = LinearLayout.VISIBLE
+        weeklyInfoBlock.visibility = LinearLayout.GONE
         
         val calendar = Calendar.getInstance()
         calendar.time = currentDate
         
         // Находим начало текущей недели (понедельник)
-        val weekStart = getWeekStart(currentDate)
+        val thisWeekStart = getWeekStart(currentDate)
+        
+        // Находим начало прошлой недели
+        val lastWeekStart = Calendar.getInstance().apply {
+            time = thisWeekStart
+            add(Calendar.WEEK_OF_YEAR, -1)
+        }.time
         
         // Находим начало текущего месяца
-        val monthStart = Calendar.getInstance().apply {
+        val thisMonthStart = Calendar.getInstance().apply {
             time = currentDate
             set(Calendar.DAY_OF_MONTH, 1)
             set(Calendar.HOUR_OF_DAY, 0)
@@ -231,21 +258,76 @@ class ReportViewerActivity : AppCompatActivity() {
             set(Calendar.MILLISECOND, 0)
         }.time
         
-        // Суммируем значения с начала недели
-        var weekSum = 0
-        var monthSum = 0
+        // Находим начало прошлого месяца
+        val lastMonthStart = Calendar.getInstance().apply {
+            time = thisMonthStart
+            add(Calendar.MONTH, -1)
+        }.time
+        
+        val lastMonthEnd = Calendar.getInstance().apply {
+            time = thisMonthStart
+            add(Calendar.DAY_OF_MONTH, -1)
+        }.time
+        
+        // Суммируем значения
+        var thisWeekSum = 0
+        var lastWeekSum = 0
+        var thisMonthSum = 0
+        var lastMonthSum = 0
         
         for (data in dailyDataList) {
-            if (data.date >= weekStart) {
-                weekSum += data.value
+            if (data.date >= thisWeekStart) {
+                thisWeekSum += data.value
             }
-            if (data.date >= monthStart) {
-                monthSum += data.value
+            if (data.date >= lastWeekStart && data.date < thisWeekStart) {
+                lastWeekSum += data.value
+            }
+            if (data.date >= thisMonthStart) {
+                thisMonthSum += data.value
+            }
+            if (data.date >= lastMonthStart && data.date < thisMonthStart) {
+                lastMonthSum += data.value
             }
         }
         
-        weekValueText.text = weekSum.toString()
-        monthValueText.text = monthSum.toString()
+        thisWeekValue.text = thisWeekSum.toString()
+        lastWeekValue.text = lastWeekSum.toString()
+        thisMonthValue.text = thisMonthSum.toString()
+        lastMonthValue.text = lastMonthSum.toString()
+    }
+    
+    private fun calculateAndDisplayWeeklyStats(weekList: List<WeekData>) {
+        // Показываем блок для еженедельного отчета
+        weeklyInfoBlock.visibility = LinearLayout.VISIBLE
+        dailyInfoBlock.visibility = LinearLayout.GONE
+        
+        // Сортируем недели по дате
+        val sortedWeeks = weekList.sortedBy { it.startDate }
+        
+        if (sortedWeeks.size < 4) {
+            last4WeeksValue.text = "Недостаточно данных"
+            prev4WeeksValue.text = "Недостаточно данных"
+            return
+        }
+        
+        // Суммируем последние 4 недели
+        var last4WeeksSum = 0
+        for (i in sortedWeeks.size - 4 until sortedWeeks.size) {
+            last4WeeksSum += sortedWeeks[i].sumValue
+        }
+        
+        // Суммируем предыдущие 4 недели (если есть)
+        var prev4WeeksSum = 0
+        if (sortedWeeks.size >= 8) {
+            for (i in sortedWeeks.size - 8 until sortedWeeks.size - 4) {
+                prev4WeeksSum += sortedWeeks[i].sumValue
+            }
+        } else {
+            prev4WeeksSum = 0
+        }
+        
+        last4WeeksValue.text = last4WeeksSum.toString()
+        prev4WeeksValue.text = if (prev4WeeksSum > 0) prev4WeeksSum.toString() else "Нет данных"
     }
     
     private fun getWeekStart(date: Date): Date {
