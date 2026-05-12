@@ -48,7 +48,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Эта неделя:"
+                android:text="Эта неделя"
                 android:textColor="@android:color/white"
                 android:textSize="12sp" />
             
@@ -72,7 +72,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Прошлая неделя:"
+                android:text="Та неделя"
                 android:textColor="@android:color/white"
                 android:textSize="12sp" />
             
@@ -96,7 +96,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Этот месяц:"
+                android:text="Этот месяц"
                 android:textColor="@android:color/white"
                 android:textSize="12sp" />
             
@@ -120,7 +120,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Прошлый месяц:"
+                android:text="Тот месяц"
                 android:textColor="@android:color/white"
                 android:textSize="12sp" />
             
@@ -155,7 +155,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Последние 4 недели:"
+                android:text="Эти 4 недели"
                 android:textColor="@android:color/white"
                 android:textSize="12sp" />
             
@@ -179,7 +179,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Прошлые 4 недели:"
+                android:text="Те 4 недели"
                 android:textColor="@android:color/white"
                 android:textSize="12sp" />
             
