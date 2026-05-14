@@ -158,78 +158,87 @@ class ReportViewerActivity : AppCompatActivity() {
         }
     }
     
-    private fun processWeeklyReport(allRowsData: List<Triple<Date?, Date?, Int>>, lastDate: Date?) {
-        val weekMap = mutableMapOf<String, WeekData>()
-        
-        for (data in allRowsData) {
-            val startDate = data.first ?: continue
-            val endDate = data.second ?: continue
-            val number = data.third
-            
-            // Пропускаем строки с датами после последней даты
-            if (lastDate != null && startDate.after(lastDate)) {
-                continue
-            }
-            
-            val key = "${dateFormat.format(startDate)}|${dateFormat.format(endDate)}"
-            
-            if (weekMap.containsKey(key)) {
-                weekMap[key]?.sumValue = weekMap[key]!!.sumValue + number
-            } else {
-                weekMap[key] = WeekData(startDate, endDate, number)
-            }
-        }
-        
-        if (weekMap.isEmpty()) {
-            Toast.makeText(this, "Нет данных для отображения", Toast.LENGTH_SHORT).show()
-            finish()
-            return
-        }
-        
-        val weekList = weekMap.values.toList()
-        
-        // Рассчитываем и показываем статистику для еженедельного отчета
-        calculateAndDisplayWeeklyStats(weekList)
-        
-        displayWeeklyTable(weekList)
+private fun processDailyReport(allRowsData: List<Triple<Date?, Date?, Int>>, lastDate: Date?) {
+    // Сначала фильтруем по дате
+    val filteredData = allRowsData.filter { 
+        val startDate = it.first
+        lastDate == null || (startDate != null && !startDate.after(lastDate))
     }
     
-    private fun processDailyReport(allRowsData: List<Triple<Date?, Date?, Int>>, lastDate: Date?) {
-        // Сначала суммируем значения за один день
-        val dailySumMap = mutableMapOf<Date, Int>()
-        val weekGroups = mutableMapOf<Date, MutableList<Int>>()
+    // Группируем и суммируем по датам
+    val dailySumMap = mutableMapOf<Date, Int>()
+    val weekGroups = mutableMapOf<Date, MutableList<Int>>()
+    
+    for (data in filteredData) {
+        val startDate = data.first ?: continue
+        val number = data.third
         
-        for (data in allRowsData) {
-            val startDate = data.first ?: continue
-            val number = data.third
-            
-            // Пропускаем строки с датами после последней даты
-            if (lastDate != null && startDate.after(lastDate)) {
-                continue
-            }
-            
-            // Суммируем значения за день
-            dailySumMap[startDate] = dailySumMap.getOrDefault(startDate, 0) + number
-            
-            // Группируем по неделям для отображения заказа/получки
-            val weekStart = getWeekStart(startDate)
-            weekGroups.getOrPut(weekStart) { mutableListOf() }.add(number)
-        }
+        // Суммируем значения за день (независимо от порядка)
+        dailySumMap[startDate] = dailySumMap.getOrDefault(startDate, 0) + number
         
-        // Преобразуем в список DailyData
-        val dailyDataList = dailySumMap.map { (date, sum) -> DailyData(date, sum) }.sortedBy { it.date }
-        
-        if (dailyDataList.isEmpty()) {
-            Toast.makeText(this, "Нет данных для отображения", Toast.LENGTH_SHORT).show()
-            finish()
-            return
-        }
-        
-        // Рассчитываем и показываем статистику для ежедневного отчета
-        calculateAndDisplayDailyStats(dailyDataList)
-        
-        displayDailyTable(dailyDataList, weekGroups)
+        // Группируем по неделям
+        val weekStart = getWeekStart(startDate)
+        weekGroups.getOrPut(weekStart) { mutableListOf() }.add(number)
     }
+    
+    // Преобразуем в список DailyData и сортируем по дате
+    val dailyDataList = dailySumMap.map { (date, sum) -> DailyData(date, sum) }
+        .sortedBy { it.date }
+    
+    if (dailyDataList.isEmpty()) {
+        Toast.makeText(this, "Нет данных для отображения", Toast.LENGTH_SHORT).show()
+        finish()
+        return
+    }
+    
+    // Рассчитываем и показываем статистику
+    calculateAndDisplayDailyStats(dailyDataList)
+    
+    displayDailyTable(dailyDataList, weekGroups)
+}
+
+private fun processWeeklyReport(allRowsData: List<Triple<Date?, Date?, Int>>, lastDate: Date?) {
+    // Фильтруем по последней дате
+    val filteredData = allRowsData.filter { 
+        val startDate = it.first
+        lastDate == null || (startDate != null && !startDate.after(lastDate))
+    }
+    
+    // Группируем по неделям (ключ - даты начала и конца)
+    val weekMap = mutableMapOf<String, WeekData>()
+    
+    for (data in filteredData) {
+        val startDate = data.first ?: continue
+        val endDate = data.second ?: continue
+        val number = data.third
+        
+        val key = "${dateFormat.format(startDate)}|${dateFormat.format(endDate)}"
+        
+        if (weekMap.containsKey(key)) {
+            // Суммируем существующую неделю
+            weekMap[key]?.sumValue = weekMap[key]!!.sumValue + number
+        } else {
+            // Создаем новую неделю
+            weekMap[key] = WeekData(startDate, endDate, number)
+        }
+    }
+    
+    if (weekMap.isEmpty()) {
+        Toast.makeText(this, "Нет данных для отображения", Toast.LENGTH_SHORT).show()
+        finish()
+        return
+    }
+    
+    val weekList = weekMap.values.toList()
+    
+    // Сортируем недели по дате начала
+    val sortedWeeks = weekList.sortedBy { it.startDate }
+    
+    // Рассчитываем и показываем статистику
+    calculateAndDisplayWeeklyStats(sortedWeeks)
+    
+    displayWeeklyTable(sortedWeeks)
+}
     
     private fun calculateAndDisplayDailyStats(dailyDataList: List<DailyData>) {
         // Показываем блок для ежедневного отчета
