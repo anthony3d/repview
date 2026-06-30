@@ -72,10 +72,10 @@ class SimpleLineChart @JvmOverloads constructor(
     
     private fun calculateMovingAverage() {
         movingAveragePoints.clear()
-        val windowSize = 7
+        val windowSize = 28
         
         for (i in dataPoints.indices) {
-            var sum = 0
+            var sum = 0L
             var count = 0
             val start = maxOf(0, i - windowSize / 2)
             val end = minOf(dataPoints.size - 1, i + windowSize / 2)
