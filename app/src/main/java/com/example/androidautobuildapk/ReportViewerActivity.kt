@@ -290,18 +290,39 @@ class ReportViewerActivity : AppCompatActivity() {
             weekGroups.getOrPut(weekStart) { mutableListOf() }.add(number)
         }
         
-        // Преобразуем в список и сортируем
-        val dailyDataList = dailySumMap.map { (date, sum) -> DailyData(date, sum) }
-            .sortedBy { it.date }
+        // Заполняем пропущенные дни нулевыми значениями
+        val filledDailyData = fillMissingDates(dailySumMap)
         
-        if (dailyDataList.isEmpty()) {
+        if (filledDailyData.isEmpty()) {
             Toast.makeText(this, "Нет данных для отображения", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
         
-        calculateAndDisplayDailyStats(dailyDataList)
-        displayDailyTable(dailyDataList, weekGroups)
+        calculateAndDisplayDailyStats(filledDailyData)
+        displayDailyTable(filledDailyData, weekGroups)
+    }
+    
+    private fun fillMissingDates(dailySumMap: Map<Date, Int>): List<DailyData> {
+        if (dailySumMap.isEmpty()) return emptyList()
+        
+        // Находим минимальную и максимальную дату
+        val minDate = dailySumMap.keys.minOrNull() ?: return emptyList()
+        val maxDate = dailySumMap.keys.maxOrNull() ?: return emptyList()
+        
+        val result = mutableListOf<DailyData>()
+        val calendar = Calendar.getInstance()
+        calendar.time = minDate
+        
+        // Проходим по всем дням от минимальной до максимальной даты
+        while (!calendar.time.after(maxDate)) {
+            val currentDate = calendar.time
+            val value = dailySumMap[currentDate] ?: 0 // Если даты нет в мапе, ставим 0
+            result.add(DailyData(currentDate, value))
+            calendar.add(Calendar.DAY_OF_YEAR, 1)
+        }
+        
+        return result
     }
     
     private fun getWeekStart(date: Date): Date {
