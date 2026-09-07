@@ -50,6 +50,12 @@ class SimpleLineChart @JvmOverloads constructor(
         style = Paint.Style.FILL
     }
     
+    private val paintZeroLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.RED
+        strokeWidth = 2f
+        style = Paint.Style.STROKE
+    }
+    
     private val dateFormat = SimpleDateFormat("dd.MM", Locale.getDefault())
     
     data class DataPoint(
@@ -156,6 +162,9 @@ class SimpleLineChart @JvmOverloads constructor(
         // Рисуем сетку
         drawGrid(canvas, paddingLeft, paddingTop, chartWidth, chartHeight, maxValue, minValue)
         
+        // Рисуем линию нуля
+        drawZeroLine(canvas, paddingLeft, paddingTop, chartWidth, chartHeight, maxValue, minValue)
+        
         // Рисуем оси
         drawAxes(canvas, paddingLeft, paddingTop, chartWidth, chartHeight)
         
@@ -257,6 +266,32 @@ class SimpleLineChart @JvmOverloads constructor(
                 val x = paddingLeft + (i * chartWidth / (dataPoints.size - 1))
                 canvas.drawLine(x, paddingTop, x, paddingTop + chartHeight, paintGrid)
             }
+        }
+    }
+    
+    private fun drawZeroLine(
+        canvas: Canvas,
+        paddingLeft: Float,
+        paddingTop: Float,
+        chartWidth: Float,
+        chartHeight: Float,
+        maxValue: Int,
+        minValue: Float
+    ) {
+        val valueRange = if (maxValue.toFloat() == minValue) 1f else (maxValue - minValue).toFloat()
+        
+        // Проверяем, находится ли 0 в диапазоне значений
+        if (maxValue >= 0 && minValue <= 0) {
+            // Вычисляем позицию линии нуля
+            val zeroY = paddingTop + chartHeight - ((0 - minValue) / valueRange * chartHeight)
+            
+            // Рисуем линию нуля
+            canvas.drawLine(paddingLeft, zeroY, paddingLeft + chartWidth, zeroY, paintZeroLine)
+            
+            // Подписываем "0" рядом с линией
+            paintText.color = Color.RED
+            paintText.textSize = 22f
+            canvas.drawText("0", 5f, zeroY + 8f, paintText)
         }
     }
     
