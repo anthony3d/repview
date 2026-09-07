@@ -239,7 +239,7 @@ class ReportViewerActivity : AppCompatActivity() {
             lastDate == null || (startDate != null && !startDate.after(lastDate))
         }
         
-        // Группируем по неделям
+        // Группируем по неделям с нормализацией
         val weekMap = mutableMapOf<String, WeekData>()
         
         for (data in filteredData) {
@@ -247,12 +247,16 @@ class ReportViewerActivity : AppCompatActivity() {
             val endDate = data.second ?: continue
             val number = data.third
             
-            val key = "${dateFormat.format(startDate)}|${dateFormat.format(endDate)}"
+            // Нормализуем даты: понедельник и воскресенье
+            val normalizedStart = getWeekStart(startDate)
+            val normalizedEnd = getWeekEnd(endDate)
+            
+            val key = "${dateFormat.format(normalizedStart)}|${dateFormat.format(normalizedEnd)}"
             
             if (weekMap.containsKey(key)) {
                 weekMap[key]?.sumValue = weekMap[key]!!.sumValue + number
             } else {
-                weekMap[key] = WeekData(startDate, endDate, number)
+                weekMap[key] = WeekData(normalizedStart, normalizedEnd, number)
             }
         }
         
@@ -267,6 +271,43 @@ class ReportViewerActivity : AppCompatActivity() {
         
         calculateAndDisplayWeeklyStats(sortedWeeks)
         displayWeeklyTable(sortedWeeks)
+    }
+    
+    // Получить понедельник недели
+    private fun getWeekStart(date: Date): Date {
+        val calendar = Calendar.getInstance()
+        calendar.time = date
+        calendar.firstDayOfWeek = Calendar.MONDAY
+        calendar.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+        return calendar.time
+    }
+    
+    // Получить воскресенье недели
+    private fun getWeekEnd(date: Date): Date {
+        val calendar = Calendar.getInstance()
+        calendar.time = date
+        calendar.firstDayOfWeek = Calendar.MONDAY
+        calendar.set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
+        calendar.set(Calendar.HOUR_OF_DAY, 23)
+        calendar.set(Calendar.MINUTE, 59)
+        calendar.set(Calendar.SECOND, 59)
+        calendar.set(Calendar.MILLISECOND, 999)
+        return calendar.time
+    }
+    
+    private fun addWeeks(date: Date, weeks: Int): Date {
+        val calendar = Calendar.getInstance()
+        calendar.time = date
+        calendar.add(Calendar.WEEK_OF_YEAR, weeks)
+        return calendar.time
+    }
+    
+    private fun isCurrentDateInRange(startDate: Date, endDate: Date): Boolean {
+        return currentDate in startDate..endDate
     }
     
     private fun processDailyReport(allRowsData: List<Triple<Date?, Date?, Int>>, lastDate: Date?) {
@@ -317,35 +358,12 @@ class ReportViewerActivity : AppCompatActivity() {
         // Проходим по всем дням от минимальной до максимальной даты
         while (!calendar.time.after(maxDate)) {
             val currentDate = calendar.time
-            val value = dailySumMap[currentDate] ?: 0 // Если даты нет в мапе, ставим 0
+            val value = dailySumMap[currentDate] ?: 0
             result.add(DailyData(currentDate, value))
             calendar.add(Calendar.DAY_OF_YEAR, 1)
         }
         
         return result
-    }
-    
-    private fun getWeekStart(date: Date): Date {
-        val calendar = Calendar.getInstance()
-        calendar.time = date
-        calendar.firstDayOfWeek = Calendar.MONDAY
-        calendar.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
-        calendar.set(Calendar.HOUR_OF_DAY, 0)
-        calendar.set(Calendar.MINUTE, 0)
-        calendar.set(Calendar.SECOND, 0)
-        calendar.set(Calendar.MILLISECOND, 0)
-        return calendar.time
-    }
-    
-    private fun addWeeks(date: Date, weeks: Int): Date {
-        val calendar = Calendar.getInstance()
-        calendar.time = date
-        calendar.add(Calendar.WEEK_OF_YEAR, weeks)
-        return calendar.time
-    }
-    
-    private fun isCurrentDateInRange(startDate: Date, endDate: Date): Boolean {
-        return currentDate in startDate..endDate
     }
     
     private fun calculateAndDisplayDailyStats(dailyDataList: List<DailyData>) {
@@ -446,7 +464,22 @@ class ReportViewerActivity : AppCompatActivity() {
         val chartData = mutableListOf<SimpleLineChart.DataPoint>()
         val sortedWeeks = weekDataList.sortedBy { it.startDate }
         
+        // Проверяем последовательность недель
+        var previousWeekEnd: Date? = null
+        val validWeeks = mutableListOf<WeekData>()
+        
         for (week in sortedWeeks) {
+            // Если это первая неделя или она следует за предыдущей
+            if (previousWeekEnd == null || week.startDate.after(previousWeekEnd) || week.startDate == previousWeekEnd) {
+                validWeeks.add(week)
+                previousWeekEnd = week.endDate
+            } else {
+                // Если неделя сбивается - пропускаем
+                continue
+            }
+        }
+        
+        for (week in validWeeks) {
             val startDateStr = dateFormat.format(week.startDate)
             val endDateStr = dateFormat.format(week.endDate)
             val sumValue = week.sumValue.toString()
