@@ -163,7 +163,7 @@ class SimpleLineChart @JvmOverloads constructor(
         drawGrid(canvas, paddingLeft, paddingTop, chartWidth, chartHeight, maxValue, minValue)
         
         // Рисуем линию нуля
-        drawZeroLine(canvas, paddingLeft, paddingTop, chartWidth, chartHeight, maxValue, minValue)
+        drawZeroLine(canvas, paddingLeft, paddingTop, chartWidth, chartHeight, maxValue.toFloat(), minValue.toFloat())
         
         // Рисуем оси
         drawAxes(canvas, paddingLeft, paddingTop, chartWidth, chartHeight)
@@ -275,10 +275,10 @@ class SimpleLineChart @JvmOverloads constructor(
         paddingTop: Float,
         chartWidth: Float,
         chartHeight: Float,
-        maxValue: Int,
+        maxValue: Float,
         minValue: Float
     ) {
-        val valueRange = if (maxValue.toFloat() == minValue) 1f else (maxValue - minValue).toFloat()
+        val valueRange = if (maxValue == minValue) 1f else (maxValue - minValue)
         
         // Проверяем, находится ли 0 в диапазоне значений
         if (maxValue >= 0 && minValue <= 0) {
