@@ -37,6 +37,10 @@ class ReportViewerActivity : AppCompatActivity() {
     // Лимит в днях (300 дней ~ 10 месяцев)
     private val MAX_DAYS = 300
     
+    // Константы для расчета дат
+    private val ORDER_WEEKS_OFFSET = 3  // Заказ: +3 недели
+    private val PAYMENT_WEEKS_OFFSET = 5 // Получка: +5 недель
+    
     enum class ReportType {
         WEEKLY,
         DAILY
@@ -483,8 +487,9 @@ class ReportViewerActivity : AppCompatActivity() {
             val startDateStr = dateFormat.format(week.startDate)
             val endDateStr = dateFormat.format(week.endDate)
             val sumValue = week.sumValue.toString()
-            val orderDate = addWeeks(week.startDate, 4)
-            val paymentDate = addWeeks(week.startDate, 5)
+            // Используем новые константы для расчета
+            val orderDate = addWeeks(week.startDate, ORDER_WEEKS_OFFSET)
+            val paymentDate = addWeeks(week.startDate, PAYMENT_WEEKS_OFFSET)
             
             val isInRange = isCurrentDateInRange(orderDate, paymentDate)
             
@@ -518,8 +523,9 @@ class ReportViewerActivity : AppCompatActivity() {
             
             if (currentWeekStart != weekStart) {
                 currentWeekStart = weekStart
-                weekOrderDate = dateFormat.format(addWeeks(weekStart, 4))
-                weekPaymentDate = dateFormat.format(addWeeks(weekStart, 5))
+                // Используем новые константы для расчета
+                weekOrderDate = dateFormat.format(addWeeks(weekStart, ORDER_WEEKS_OFFSET))
+                weekPaymentDate = dateFormat.format(addWeeks(weekStart, PAYMENT_WEEKS_OFFSET))
             }
             
             val orderDateObj = parseDateFromString(weekOrderDate)
