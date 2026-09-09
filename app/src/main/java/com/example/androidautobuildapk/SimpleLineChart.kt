@@ -1,708 +1,314 @@
 package com.example.repview
 
-import android.content.Intent
-import android.graphics.Color
-import android.net.Uri
-import android.os.Bundle
-import android.widget.LinearLayout
-import android.widget.TableLayout
-import android.widget.TableRow
-import android.widget.TextView
-import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
-import org.apache.poi.ss.usermodel.WorkbookFactory
+import android.content.Context
+import android.graphics.*
+import android.util.AttributeSet
+import android.view.View
 import java.text.SimpleDateFormat
 import java.util.*
 
-class ReportViewerActivity : AppCompatActivity() {
+class SimpleLineChart @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = 0
+) : View(context, attrs, defStyleAttr) {
     
-    private lateinit var tableLayout: TableLayout
-    private lateinit var lineChart: SimpleLineChart
-    private lateinit var dailyInfoBlock: LinearLayout
-    private lateinit var weeklyInfoBlock: LinearLayout
+    private var dataPoints = mutableListOf<DataPoint>()
+    private var movingAveragePoints = mutableListOf<DataPoint>()
+    private var isDailyReport = false
     
-    // Daily views
-    private lateinit var thisWeekValue: TextView
-    private lateinit var lastWeekValue: TextView
-    private lateinit var thisMonthValue: TextView
-    private lateinit var lastMonthValue: TextView
-    
-    // Weekly views
-    private lateinit var last4WeeksValue: TextView
-    private lateinit var prev4WeeksValue: TextView
-    
-    private val dateFormat = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
-    private val currentDate = Date()
-    
-    // Лимит в днях (300 дней ~ 10 месяцев)
-    private val MAX_DAYS = 300
-    
-    // Константы для расчета дат
-    private val ORDER_WEEKS_OFFSET = 3  // Заказ: +3 недели
-    private val PAYMENT_WEEKS_OFFSET = 5 // Получка: +5 недель
-    
-    enum class ReportType {
-        WEEKLY,
-        DAILY
+    private val paintLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(76, 175, 80)
+        strokeWidth = 4f
+        style = Paint.Style.STROKE
     }
     
-    data class WeekData(
-        val startDate: Date,
-        val endDate: Date,
-        var sumValue: Int = 0
-    )
+    private val paintAverageLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(255, 87, 34)
+        strokeWidth = 3f
+        style = Paint.Style.STROKE
+    }
     
-    data class DailyData(
+    private val paintPoint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(33, 150, 243)
+        style = Paint.Style.FILL
+    }
+    
+    private val paintText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.BLACK
+        textSize = 28f
+    }
+    
+    private val paintGrid = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.LTGRAY
+        strokeWidth = 1f
+        style = Paint.Style.STROKE
+    }
+    
+    private val paintWeekend = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(80, 255, 193, 7)
+        style = Paint.Style.FILL
+    }
+    
+    private val paintZeroLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.RED
+        strokeWidth = 2f
+        style = Paint.Style.STROKE
+    }
+    
+    private val dateFormat = SimpleDateFormat("dd.MM", Locale.getDefault())
+    
+    data class DataPoint(
         val date: Date,
         val value: Int
     )
     
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_report_viewer)
+    fun setData(data: List<DataPoint>, isDaily: Boolean = false) {
+        dataPoints = data.toMutableList()
+        isDailyReport = isDaily
         
-        tableLayout = findViewById(R.id.tableLayout)
-        lineChart = findViewById(R.id.lineChart)
-        dailyInfoBlock = findViewById(R.id.dailyInfoBlock)
-        weeklyInfoBlock = findViewById(R.id.weeklyInfoBlock)
-        
-        // Daily views
-        thisWeekValue = findViewById(R.id.thisWeekValue)
-        lastWeekValue = findViewById(R.id.lastWeekValue)
-        thisMonthValue = findViewById(R.id.thisMonthValue)
-        lastMonthValue = findViewById(R.id.lastMonthValue)
-        
-        // Weekly views
-        last4WeeksValue = findViewById(R.id.last4WeeksValue)
-        prev4WeeksValue = findViewById(R.id.prev4WeeksValue)
-        
-        when {
-            intent?.action == Intent.ACTION_SEND -> {
-                val uri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
-                if (uri != null) {
-                    processFile(uri)
-                } else {
-                    Toast.makeText(this, "Файл не найден", Toast.LENGTH_SHORT).show()
-                    finish()
-                }
-            }
-            else -> {
-                Toast.makeText(this, "Запустите через 'Поделиться'", Toast.LENGTH_SHORT).show()
-                finish()
-            }
-        }
-    }
-    
-    // Функция parseDate должна быть объявлена ДО её использования в processFile
-    private fun parseDate(cell: org.apache.poi.ss.usermodel.Cell?): Date? {
-        if (cell == null) return null
-        
-        return try {
-            when (cell.cellType) {
-                org.apache.poi.ss.usermodel.CellType.NUMERIC -> {
-                    if (org.apache.poi.ss.usermodel.DateUtil.isCellDateFormatted(cell)) {
-                        cell.dateCellValue
-                    } else {
-                        null
-                    }
-                }
-                org.apache.poi.ss.usermodel.CellType.STRING -> {
-                    val dateStr = cell.stringCellValue.trim()
-                    val formats = listOf(
-                        SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()),
-                        SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()),
-                        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()),
-                        SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
-                    )
-                    for (format in formats) {
-                        try {
-                            val date = format.parse(dateStr)
-                            val calendar = Calendar.getInstance()
-                            calendar.time = date
-                            calendar.set(Calendar.HOUR_OF_DAY, 0)
-                            calendar.set(Calendar.MINUTE, 0)
-                            calendar.set(Calendar.SECOND, 0)
-                            calendar.set(Calendar.MILLISECOND, 0)
-                            return calendar.time
-                        } catch (e: Exception) {
-                            // Пробуем следующий формат
-                        }
-                    }
-                    null
-                }
-                else -> null
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
-    
-    private fun processFile(uri: Uri) {
-        try {
-            val inputStream = contentResolver.openInputStream(uri)
-            val workbook = WorkbookFactory.create(inputStream)
-            val sheet = workbook.getSheetAt(0)
-            
-            val headerRow = sheet.getRow(0)
-            val lastColumnIndex = headerRow.lastCellNum - 1
-            val preLastColumnIndex = lastColumnIndex - 1
-            
-            val startRow = 1
-            val totalRows = sheet.physicalNumberOfRows
-            val endRow = totalRows - 1 // Читаем все строки
-            
-            // Сначала соберем все данные
-            val allRowsData = mutableListOf<Triple<Date?, Date?, Int>>()
-            
-            for (i in startRow..endRow) {
-                val row = sheet.getRow(i) ?: continue
-                
-                val startDateCell = row.getCell(2)
-                val endDateCell = row.getCell(3)
-                val numberCell = row.getCell(preLastColumnIndex)
-                
-                val startDate = parseDate(startDateCell)
-                val endDate = parseDate(endDateCell)
-                val number = if (numberCell != null) {
-                    try {
-                        numberCell.numericCellValue.toInt()
-                    } catch (e: Exception) {
-                        0
-                    }
-                } else {
-                    0
-                }
-                
-                if (startDate != null && endDate != null) {
-                    allRowsData.add(Triple(startDate, endDate, number))
-                }
-            }
-            
-            if (allRowsData.isEmpty()) {
-                Toast.makeText(this, "Нет данных для отображения", Toast.LENGTH_SHORT).show()
-                finish()
-                return
-            }
-            
-            // Определяем тип отчета
-            val reportType = if (allRowsData.take(5).count { it.first == it.second } > 2) {
-                ReportType.DAILY
-            } else {
-                ReportType.WEEKLY
-            }
-            
-            // Применяем лимит по дням
-            val limitedData = applyDayLimit(allRowsData, reportType)
-            
-            if (limitedData.isEmpty()) {
-                Toast.makeText(this, "Нет данных после применения лимита", Toast.LENGTH_SHORT).show()
-                finish()
-                return
-            }
-            
-            // Находим последнюю дату в ограниченных данных
-            val lastDate = limitedData.mapNotNull { it.first }.maxOrNull()
-            
-            if (reportType == ReportType.WEEKLY) {
-                processWeeklyReport(limitedData, lastDate)
-            } else {
-                processDailyReport(limitedData, lastDate)
-            }
-            
-            workbook.close()
-            inputStream?.close()
-            
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(this, "Ошибка: ${e.message}", Toast.LENGTH_LONG).show()
-        }
-    }
-    
-    private fun applyDayLimit(allData: List<Triple<Date?, Date?, Int>>, reportType: ReportType): List<Triple<Date?, Date?, Int>> {
-        if (allData.isEmpty()) return emptyList()
-        
-        // Находим все уникальные даты и сортируем их по убыванию
-        val uniqueDates = allData.mapNotNull { it.first }.distinct().sortedDescending()
-        
-        if (uniqueDates.isEmpty()) return emptyList()
-        
-        // Берем последние MAX_DAYS дней
-        val lastDates = uniqueDates.take(MAX_DAYS).toSet()
-        
-        // Фильтруем данные, оставляя только строки с датами из последних MAX_DAYS дней
-        return allData.filter { 
-            val date = it.first
-            date != null && lastDates.contains(date)
-        }
-    }
-    
-    private fun processWeeklyReport(allRowsData: List<Triple<Date?, Date?, Int>>, lastDate: Date?) {
-        // Фильтруем по последней дате
-        val filteredData = allRowsData.filter { 
-            val startDate = it.first
-            lastDate == null || (startDate != null && !startDate.after(lastDate))
-        }
-        
-        // Группируем по неделям с нормализацией
-        val weekMap = mutableMapOf<String, WeekData>()
-        
-        for (data in filteredData) {
-            val startDate = data.first ?: continue
-            val endDate = data.second ?: continue
-            val number = data.third
-            
-            // Нормализуем даты: понедельник и воскресенье
-            val normalizedStart = getWeekStart(startDate)
-            val normalizedEnd = getWeekEnd(endDate)
-            
-            val key = "${dateFormat.format(normalizedStart)}|${dateFormat.format(normalizedEnd)}"
-            
-            if (weekMap.containsKey(key)) {
-                weekMap[key]?.sumValue = weekMap[key]!!.sumValue + number
-            } else {
-                weekMap[key] = WeekData(normalizedStart, normalizedEnd, number)
-            }
-        }
-        
-        if (weekMap.isEmpty()) {
-            Toast.makeText(this, "Нет данных для отображения", Toast.LENGTH_SHORT).show()
-            finish()
-            return
-        }
-        
-        val weekList = weekMap.values.toList()
-        val sortedWeeks = weekList.sortedBy { it.startDate }
-        
-        calculateAndDisplayWeeklyStats(sortedWeeks)
-        displayWeeklyTable(sortedWeeks)
-    }
-    
-    // Получить понедельник недели
-    private fun getWeekStart(date: Date): Date {
-        val calendar = Calendar.getInstance()
-        calendar.time = date
-        calendar.firstDayOfWeek = Calendar.MONDAY
-        calendar.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
-        calendar.set(Calendar.HOUR_OF_DAY, 0)
-        calendar.set(Calendar.MINUTE, 0)
-        calendar.set(Calendar.SECOND, 0)
-        calendar.set(Calendar.MILLISECOND, 0)
-        return calendar.time
-    }
-    
-    // Получить воскресенье недели
-    private fun getWeekEnd(date: Date): Date {
-        val calendar = Calendar.getInstance()
-        calendar.time = date
-        calendar.firstDayOfWeek = Calendar.MONDAY
-        calendar.set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
-        calendar.set(Calendar.HOUR_OF_DAY, 23)
-        calendar.set(Calendar.MINUTE, 59)
-        calendar.set(Calendar.SECOND, 59)
-        calendar.set(Calendar.MILLISECOND, 999)
-        return calendar.time
-    }
-    
-    private fun addWeeks(date: Date, weeks: Int): Date {
-        val calendar = Calendar.getInstance()
-        calendar.time = date
-        calendar.add(Calendar.WEEK_OF_YEAR, weeks)
-        return calendar.time
-    }
-    
-    private fun isCurrentDateInRange(startDate: Date, endDate: Date): Boolean {
-        return currentDate in startDate..endDate
-    }
-    
-    private fun processDailyReport(allRowsData: List<Triple<Date?, Date?, Int>>, lastDate: Date?) {
-        // Фильтруем по дате
-        val filteredData = allRowsData.filter { 
-            val startDate = it.first
-            lastDate == null || (startDate != null && !startDate.after(lastDate))
-        }
-        
-        // Группируем и суммируем по датам
-        val dailySumMap = mutableMapOf<Date, Int>()
-        val weekGroups = mutableMapOf<Date, MutableList<Int>>()
-        
-        for (data in filteredData) {
-            val startDate = data.first ?: continue
-            val number = data.third
-            
-            dailySumMap[startDate] = dailySumMap.getOrDefault(startDate, 0) + number
-            
-            val weekStart = getWeekStart(startDate)
-            weekGroups.getOrPut(weekStart) { mutableListOf() }.add(number)
-        }
-        
-        // Заполняем пропущенные дни нулевыми значениями
-        val filledDailyData = fillMissingDates(dailySumMap)
-        
-        if (filledDailyData.isEmpty()) {
-            Toast.makeText(this, "Нет данных для отображения", Toast.LENGTH_SHORT).show()
-            finish()
-            return
-        }
-        
-        calculateAndDisplayDailyStats(filledDailyData)
-        displayDailyTable(filledDailyData, weekGroups)
-    }
-    
-    private fun fillMissingDates(dailySumMap: Map<Date, Int>): List<DailyData> {
-        if (dailySumMap.isEmpty()) return emptyList()
-        
-        // Находим минимальную и максимальную дату
-        val minDate = dailySumMap.keys.minOrNull() ?: return emptyList()
-        val maxDate = dailySumMap.keys.maxOrNull() ?: return emptyList()
-        
-        val result = mutableListOf<DailyData>()
-        val calendar = Calendar.getInstance()
-        calendar.time = minDate
-        
-        // Проходим по всем дням от минимальной до максимальной даты
-        while (!calendar.time.after(maxDate)) {
-            val currentDate = calendar.time
-            val value = dailySumMap[currentDate] ?: 0
-            result.add(DailyData(currentDate, value))
-            calendar.add(Calendar.DAY_OF_YEAR, 1)
-        }
-        
-        return result
-    }
-    
-    private fun calculateAndDisplayDailyStats(dailyDataList: List<DailyData>) {
-        dailyInfoBlock.visibility = LinearLayout.VISIBLE
-        weeklyInfoBlock.visibility = LinearLayout.GONE
-        
-        val calendar = Calendar.getInstance()
-        calendar.time = currentDate
-        
-        val thisWeekStart = getWeekStart(currentDate)
-        
-        val lastWeekStart = Calendar.getInstance().apply {
-            time = thisWeekStart
-            add(Calendar.WEEK_OF_YEAR, -1)
-        }.time
-        
-        val thisMonthStart = Calendar.getInstance().apply {
-            time = currentDate
-            set(Calendar.DAY_OF_MONTH, 1)
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.time
-        
-        val lastMonthStart = Calendar.getInstance().apply {
-            time = thisMonthStart
-            add(Calendar.MONTH, -1)
-        }.time
-        
-        var thisWeekSum = 0
-        var lastWeekSum = 0
-        var thisMonthSum = 0
-        var lastMonthSum = 0
-        
-        for (data in dailyDataList) {
-            if (data.date >= thisWeekStart) {
-                thisWeekSum += data.value
-            }
-            if (data.date >= lastWeekStart && data.date < thisWeekStart) {
-                lastWeekSum += data.value
-            }
-            if (data.date >= thisMonthStart) {
-                thisMonthSum += data.value
-            }
-            if (data.date >= lastMonthStart && data.date < thisMonthStart) {
-                lastMonthSum += data.value
-            }
-        }
-        
-        thisWeekValue.text = thisWeekSum.toString()
-        lastWeekValue.text = lastWeekSum.toString()
-        thisMonthValue.text = thisMonthSum.toString()
-        lastMonthValue.text = lastMonthSum.toString()
-    }
-    
-    private fun calculateAndDisplayWeeklyStats(weekList: List<WeekData>) {
-        weeklyInfoBlock.visibility = LinearLayout.VISIBLE
-        dailyInfoBlock.visibility = LinearLayout.GONE
-        
-        val sortedWeeks = weekList.sortedBy { it.startDate }
-        
-        if (sortedWeeks.size < 4) {
-            last4WeeksValue.text = "Недостаточно данных"
-            prev4WeeksValue.text = "Недостаточно данных"
-            return
-        }
-        
-        var last4WeeksSum = 0
-        for (i in sortedWeeks.size - 4 until sortedWeeks.size) {
-            last4WeeksSum += sortedWeeks[i].sumValue
-        }
-        
-        var prev4WeeksSum = 0
-        if (sortedWeeks.size >= 8) {
-            for (i in sortedWeeks.size - 8 until sortedWeeks.size - 4) {
-                prev4WeeksSum += sortedWeeks[i].sumValue
-            }
+        if (isDailyReport && dataPoints.size >= 3) {
+            calculateMovingAverage()
         } else {
-            prev4WeeksSum = 0
+            movingAveragePoints.clear()
         }
         
-        last4WeeksValue.text = last4WeeksSum.toString()
-        prev4WeeksValue.text = if (prev4WeeksSum > 0) prev4WeeksSum.toString() else "Нет данных"
+        invalidate()
     }
     
-    private fun parseDateFromString(dateStr: String): Date? {
-        return try {
-            dateFormat.parse(dateStr)
-        } catch (e: Exception) {
-            null
-        }
-    }
-    
-    private fun displayWeeklyTable(weekDataList: List<WeekData>) {
-        addWeeklyTableHeader()
+    private fun calculateMovingAverage() {
+        movingAveragePoints.clear()
+        val windowSize = 28 // 4 недели
         
-        val chartData = mutableListOf<SimpleLineChart.DataPoint>()
-        val sortedWeeks = weekDataList.sortedBy { it.startDate }
-        
-        // Проверяем последовательность недель
-        var previousWeekEnd: Date? = null
-        val validWeeks = mutableListOf<WeekData>()
-        
-        for (week in sortedWeeks) {
-            // Если это первая неделя или она следует за предыдущей
-            if (previousWeekEnd == null || week.startDate.after(previousWeekEnd) || week.startDate == previousWeekEnd) {
-                validWeeks.add(week)
-                previousWeekEnd = week.endDate
-            } else {
-                // Если неделя сбивается - пропускаем
-                continue
+        for (i in dataPoints.indices) {
+            var sum = 0
+            var count = 0
+            val start = maxOf(0, i - windowSize / 2)
+            val end = minOf(dataPoints.size - 1, i + windowSize / 2)
+            
+            for (j in start..end) {
+                sum += dataPoints[j].value
+                count++
             }
+            
+            val average = if (count > 0) sum / count else 0
+            movingAveragePoints.add(DataPoint(dataPoints[i].date, average))
         }
+    }
+    
+    private fun isWeekend(date: Date): Boolean {
+        val calendar = Calendar.getInstance()
+        calendar.time = date
+        val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
+        return dayOfWeek == Calendar.SATURDAY || dayOfWeek == Calendar.SUNDAY
+    }
+    
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
         
-        for (week in validWeeks) {
-            val startDateStr = dateFormat.format(week.startDate)
-            val endDateStr = dateFormat.format(week.endDate)
-            val sumValue = week.sumValue.toString()
-            // Используем новые константы для расчета
-            val orderDate = addWeeks(week.startDate, ORDER_WEEKS_OFFSET)
-            val paymentDate = addWeeks(week.startDate, PAYMENT_WEEKS_OFFSET)
-            
-            val isInRange = isCurrentDateInRange(orderDate, paymentDate)
-            
-            addWeeklyDataRow(
-                startDateStr,
-                endDateStr,
-                sumValue,
-                dateFormat.format(orderDate),
-                dateFormat.format(paymentDate),
-                isInRange
+        if (dataPoints.isEmpty()) {
+            paintText.color = Color.GRAY
+            paintText.textSize = 40f
+            val text = "Нет данных для графика"
+            val textWidth = paintText.measureText(text)
+            canvas.drawText(
+                text,
+                width / 2 - textWidth / 2,
+                height / 2.toFloat(),
+                paintText
             )
-            
-            chartData.add(SimpleLineChart.DataPoint(paymentDate, week.sumValue))
+            return
         }
         
-        lineChart.setData(chartData, false)
-    }
-    
-    private fun displayDailyTable(dailyDataList: List<DailyData>, weekGroups: Map<Date, List<Int>>) {
-        addDailyTableHeader()
+        // Настройки отступов
+        val paddingLeft = 80f
+        val paddingRight = 40f
+        val paddingTop = 40f
+        val paddingBottom = 60f
         
-        val chartData = mutableListOf<SimpleLineChart.DataPoint>()
-        var currentWeekStart: Date? = null
-        var weekOrderDate: String = ""
-        var weekPaymentDate: String = ""
+        val chartWidth = width - paddingLeft - paddingRight
+        val chartHeight = height - paddingTop - paddingBottom
         
-        for ((index, daily) in dailyDataList.withIndex()) {
-            val weekStart = getWeekStart(daily.date)
-            val dateStr = dateFormat.format(daily.date)
-            val valueStr = daily.value.toString()
-            
-            if (currentWeekStart != weekStart) {
-                currentWeekStart = weekStart
-                // Используем новые константы для расчета
-                weekOrderDate = dateFormat.format(addWeeks(weekStart, ORDER_WEEKS_OFFSET))
-                weekPaymentDate = dateFormat.format(addWeeks(weekStart, PAYMENT_WEEKS_OFFSET))
-            }
-            
-            val orderDateObj = parseDateFromString(weekOrderDate)
-            val paymentDateObj = parseDateFromString(weekPaymentDate)
-            val isInRange = orderDateObj != null && paymentDateObj != null && 
-                            isCurrentDateInRange(orderDateObj, paymentDateObj)
-            
-            val orderDisplay = if (index == 0 || getWeekStart(dailyDataList[index - 1].date) != weekStart) {
-                weekOrderDate
-            } else {
-                ""
-            }
-            
-            val paymentDisplay = if (index == 0 || getWeekStart(dailyDataList[index - 1].date) != weekStart) {
-                weekPaymentDate
-            } else {
-                ""
-            }
-            
-            addDailyDataRow(dateStr, valueStr, orderDisplay, paymentDisplay, isInRange)
-            
-            chartData.add(SimpleLineChart.DataPoint(daily.date, daily.value))
-        }
+        // Находим min и max значения
+        val maxValue = dataPoints.maxOfOrNull { it.value } ?: 1
+        val minValue = dataPoints.minOfOrNull { it.value } ?: 0
+        val valueRange = if (maxValue == minValue) 1f else (maxValue - minValue).toFloat()
         
-        lineChart.setData(chartData, true)
-    }
-    
-    private fun addWeeklyTableHeader() {
-        val headerRow1 = TableRow(this)
-        
-        val weekHeader = TextView(this).apply {
-            text = "Неделя"
-            setPadding(16, 12, 16, 12)
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.rgb(33, 150, 243))
-            textSize = 14f
-            gravity = android.view.Gravity.CENTER
-        }
-        
-        val weekHeaderSpan = TableRow.LayoutParams().apply {
-            span = 2
-        }
-        weekHeader.layoutParams = weekHeaderSpan
-        headerRow1.addView(weekHeader)
-        
-        val headers = arrayOf("Сумма", "Заказ", "Получка")
-        for (header in headers) {
-            val tv = TextView(this).apply {
-                text = header
-                setPadding(16, 12, 16, 12)
-                setTextColor(Color.WHITE)
-                setBackgroundColor(Color.rgb(33, 150, 243))
-                textSize = 14f
-                gravity = android.view.Gravity.CENTER
-            }
-            headerRow1.addView(tv)
-        }
-        tableLayout.addView(headerRow1)
-        
-        val headerRow2 = TableRow(this)
-        val subHeaders = arrayOf("Начало", "Конец", "", "", "")
-        
-        for (subHeader in subHeaders) {
-            val tv = TextView(this).apply {
-                text = subHeader
-                setPadding(16, 8, 16, 8)
-                setTextColor(Color.WHITE)
-                setBackgroundColor(Color.rgb(100, 181, 246))
-                textSize = 12f
-                gravity = android.view.Gravity.CENTER
-            }
-            headerRow2.addView(tv)
-        }
-        tableLayout.addView(headerRow2)
-    }
-    
-    private fun addDailyTableHeader() {
-        val headerRow = TableRow(this)
-        
-        val headers = arrayOf("Дата", "Значение", "Заказ", "Получка")
-        for (header in headers) {
-            val tv = TextView(this).apply {
-                text = header
-                setPadding(16, 12, 16, 12)
-                setTextColor(Color.WHITE)
-                setBackgroundColor(Color.rgb(33, 150, 243))
-                textSize = 14f
-                gravity = android.view.Gravity.CENTER
-            }
-            headerRow.addView(tv)
-        }
-        tableLayout.addView(headerRow)
-    }
-    
-    private fun addWeeklyDataRow(col1: String, col2: String, col3: String, col4: String, col5: String, highlightColumns45: Boolean) {
-        val row = TableRow(this)
-        val data = arrayOf(col1, col2, col3, col4, col5)
-        
-        for ((index, value) in data.withIndex()) {
-            val tv = TextView(this).apply {
-                text = value
-                setPadding(16, 12, 16, 12)
-                textSize = 12f
-                gravity = android.view.Gravity.CENTER
-                setTextIsSelectable(true)
-                
-                when {
-                    index < 2 -> {
-                        setBackgroundColor(Color.WHITE)
-                        setTextColor(Color.BLACK)
+        // Рисуем фоновую подсветку выходных (только для ежедневного отчета)
+        if (isDailyReport && dataPoints.size > 1) {
+            var i = 0
+            while (i < dataPoints.size) {
+                val currentPoint = dataPoints[i]
+                if (isWeekend(currentPoint.date)) {
+                    val startX = paddingLeft + (i * chartWidth / (dataPoints.size - 1).coerceAtLeast(1))
+                    
+                    var endIndex = i
+                    while (endIndex < dataPoints.size && isWeekend(dataPoints[endIndex].date)) {
+                        endIndex++
                     }
-                    index == 2 -> {
-                        setBackgroundColor(Color.rgb(255, 193, 7))
-                        setTextColor(Color.BLACK)
-                        textSize = 14f
-                    }
-                    index >= 3 -> {
-                        if (highlightColumns45) {
-                            setBackgroundColor(Color.rgb(76, 175, 80))
-                            setTextColor(Color.WHITE)
-                            textSize = 13f
-                        } else {
-                            if (index % 2 == 0) {
-                                setBackgroundColor(Color.WHITE)
-                            } else {
-                                setBackgroundColor(Color.rgb(245, 245, 245))
-                            }
-                            setTextColor(Color.BLACK)
-                        }
-                    }
+                    endIndex--
+                    
+                    val endX = paddingLeft + ((endIndex + 1) * chartWidth / (dataPoints.size - 1).coerceAtLeast(1))
+                    
+                    canvas.drawRect(startX, paddingTop, endX, paddingTop + chartHeight, paintWeekend)
+                    
+                    i = endIndex + 1
+                } else {
+                    i++
                 }
             }
-            row.addView(tv)
         }
-        tableLayout.addView(row)
+        
+        // Рисуем сетку
+        drawGrid(canvas, paddingLeft, paddingTop, chartWidth, chartHeight, maxValue, minValue)
+        
+        // Рисуем линию нуля
+        drawZeroLine(canvas, paddingLeft, paddingTop, chartWidth, chartHeight, maxValue.toFloat(), minValue.toFloat())
+        
+        // Рисуем оси
+        drawAxes(canvas, paddingLeft, paddingTop, chartWidth, chartHeight)
+        
+        // Рисуем точки и линии для основных данных
+        val points = mutableListOf<Pair<Float, Float>>()
+        
+        for ((index, point) in dataPoints.withIndex()) {
+            val x = paddingLeft + (index * chartWidth / (dataPoints.size - 1).coerceAtLeast(1))
+            val y = paddingTop + chartHeight - ((point.value - minValue) / valueRange * chartHeight)
+            
+            points.add(x to y)
+            
+            // Рисуем точку
+            canvas.drawCircle(x, y, 6f, paintPoint)
+        }
+        
+        // Рисуем линию основных данных
+        if (points.size > 1) {
+            for (i in 0 until points.size - 1) {
+                canvas.drawLine(
+                    points[i].first, points[i].second,
+                    points[i + 1].first, points[i + 1].second,
+                    paintLine
+                )
+            }
+        }
+        
+        // Рисуем линию скользящего среднего (без точек)
+        if (movingAveragePoints.isNotEmpty() && movingAveragePoints.size > 1) {
+            val avgPoints = mutableListOf<Pair<Float, Float>>()
+            
+            for ((index, point) in movingAveragePoints.withIndex()) {
+                val x = paddingLeft + (index * chartWidth / (movingAveragePoints.size - 1).coerceAtLeast(1))
+                val y = paddingTop + chartHeight - ((point.value - minValue) / valueRange * chartHeight)
+                avgPoints.add(x to y)
+            }
+            
+            // Рисуем только линию скользящего среднего
+            for (i in 0 until avgPoints.size - 1) {
+                canvas.drawLine(
+                    avgPoints[i].first, avgPoints[i].second,
+                    avgPoints[i + 1].first, avgPoints[i + 1].second,
+                    paintAverageLine
+                )
+            }
+        }
+        
+        // Рисуем даты на горизонтальной оси
+        paintText.textSize = 22f
+        paintText.color = Color.BLACK
+        val step = maxOf(1, dataPoints.size / 10)
+        
+        for ((index, point) in dataPoints.withIndex()) {
+            if (index % step == 0 || index == dataPoints.size - 1) {
+                val x = paddingLeft + (index * chartWidth / (dataPoints.size - 1).coerceAtLeast(1))
+                val dateText = dateFormat.format(point.date)
+                val dateWidth = paintText.measureText(dateText)
+                canvas.drawText(dateText, x - dateWidth / 2, height - paddingBottom + 25f, paintText)
+            }
+        }
+        
+        // Добавляем легенду для скользящего среднего
+        if (movingAveragePoints.isNotEmpty()) {
+            paintText.textSize = 20f
+            paintText.color = Color.rgb(255, 87, 34)
+            canvas.drawText("--- Скользящее среднее (28 дней)", width - 240f, 30f, paintText)
+            
+            paintText.color = Color.rgb(76, 175, 80)
+            canvas.drawText("--- Данные", width - 220f, 55f, paintText)
+        }
     }
     
-    private fun addDailyDataRow(col1: String, col2: String, col3: String, col4: String, highlightColumns34: Boolean) {
-        val row = TableRow(this)
-        val data = arrayOf(col1, col2, col3, col4)
-        
-        for ((index, value) in data.withIndex()) {
-            val tv = TextView(this).apply {
-                text = value
-                setPadding(16, 12, 16, 12)
-                textSize = 12f
-                gravity = android.view.Gravity.CENTER
-                setTextIsSelectable(true)
-                
-                when {
-                    index == 0 -> {
-                        setBackgroundColor(Color.WHITE)
-                        setTextColor(Color.BLACK)
-                    }
-                    index == 1 -> {
-                        setBackgroundColor(Color.rgb(255, 193, 7))
-                        setTextColor(Color.BLACK)
-                        textSize = 14f
-                    }
-                    index >= 2 -> {
-                        if (value.isNotEmpty() && highlightColumns34) {
-                            setBackgroundColor(Color.rgb(76, 175, 80))
-                            setTextColor(Color.WHITE)
-                            textSize = 13f
-                        } else {
-                            setBackgroundColor(Color.WHITE)
-                            if (value.isEmpty()) {
-                                setTextColor(Color.TRANSPARENT)
-                            } else {
-                                setTextColor(Color.LTGRAY)
-                            }
-                        }
-                    }
-                }
-            }
-            row.addView(tv)
+    private fun drawGrid(
+        canvas: Canvas,
+        paddingLeft: Float,
+        paddingTop: Float,
+        chartWidth: Float,
+        chartHeight: Float,
+        maxValue: Int,
+        minValue: Int
+    ) {
+        // Горизонтальные линии сетки (4 линии)
+        for (i in 0..4) {
+            val y = paddingTop + (i * chartHeight / 4)
+            canvas.drawLine(paddingLeft, y, paddingLeft + chartWidth, y, paintGrid)
+            
+            // Подписи значений на вертикальной оси
+            val value = maxValue - (i * (maxValue - minValue) / 4)
+            paintText.color = Color.GRAY
+            paintText.textSize = 24f
+            val valueText = value.toInt().toString()
+            canvas.drawText(valueText, 10f, y + 8f, paintText)
         }
-        tableLayout.addView(row)
+        
+        // Вертикальные линии сетки
+        if (dataPoints.size > 1) {
+            val step = maxOf(1, dataPoints.size / 10)
+            for (i in 0 until dataPoints.size step step) {
+                val x = paddingLeft + (i * chartWidth / (dataPoints.size - 1))
+                canvas.drawLine(x, paddingTop, x, paddingTop + chartHeight, paintGrid)
+            }
+        }
+    }
+    
+    private fun drawZeroLine(
+        canvas: Canvas,
+        paddingLeft: Float,
+        paddingTop: Float,
+        chartWidth: Float,
+        chartHeight: Float,
+        maxValue: Float,
+        minValue: Float
+    ) {
+        val valueRange = if (maxValue == minValue) 1f else (maxValue - minValue)
+        
+        // Проверяем, находится ли 0 в диапазоне значений
+        if (maxValue >= 0 && minValue <= 0) {
+            // Вычисляем позицию линии нуля
+            val zeroY = paddingTop + chartHeight - ((0 - minValue) / valueRange * chartHeight)
+            
+            // Рисуем линию нуля
+            canvas.drawLine(paddingLeft, zeroY, paddingLeft + chartWidth, zeroY, paintZeroLine)
+            
+            // Подписываем "0" рядом с линией
+            paintText.color = Color.RED
+            paintText.textSize = 22f
+            canvas.drawText("0", 5f, zeroY + 8f, paintText)
+        }
+    }
+    
+    private fun drawAxes(
+        canvas: Canvas,
+        paddingLeft: Float,
+        paddingTop: Float,
+        chartWidth: Float,
+        chartHeight: Float
+    ) {
+        paintLine.color = Color.BLACK
+        paintLine.strokeWidth = 2f
+        
+        // Ось Y
+        canvas.drawLine(paddingLeft, paddingTop, paddingLeft, paddingTop + chartHeight, paintLine)
+        
+        // Ось X
+        canvas.drawLine(paddingLeft, paddingTop + chartHeight, paddingLeft + chartWidth, paddingTop + chartHeight, paintLine)
     }
 }
