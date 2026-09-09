@@ -38,8 +38,12 @@ class ReportViewerActivity : AppCompatActivity() {
     private val MAX_DAYS = 300
     
     // Константы для расчета дат
-    private val ORDER_WEEKS_OFFSET = 3  // Заказ: +3 недели
-    private val PAYMENT_WEEKS_OFFSET = 5 // Получка: +5 недель
+    private val ORDER_WEEKS_OFFSET_OLD = 4  // Заказ: +4 недели (до 20-07-2026)
+    private val ORDER_WEEKS_OFFSET_NEW = 3  // Заказ: +3 недели (с 20-07-2026)
+    private val PAYMENT_WEEKS_OFFSET = 5    // Получка: +5 недель
+    
+    // Дата изменения правил
+    private val RULE_CHANGE_DATE = parseDateFromString("20-07-2026") ?: Date()
     
     enum class ReportType {
         WEEKLY,
@@ -314,6 +318,15 @@ class ReportViewerActivity : AppCompatActivity() {
         return currentDate in startDate..endDate
     }
     
+    // Определяем, какой сдвиг использовать для даты "Заказ"
+    private fun getOrderWeeksOffset(weekStartDate: Date): Int {
+        return if (weekStartDate >= RULE_CHANGE_DATE) {
+            ORDER_WEEKS_OFFSET_NEW
+        } else {
+            ORDER_WEEKS_OFFSET_OLD
+        }
+    }
+    
     private fun processDailyReport(allRowsData: List<Triple<Date?, Date?, Int>>, lastDate: Date?) {
         // Фильтруем по дате
         val filteredData = allRowsData.filter { 
@@ -487,8 +500,10 @@ class ReportViewerActivity : AppCompatActivity() {
             val startDateStr = dateFormat.format(week.startDate)
             val endDateStr = dateFormat.format(week.endDate)
             val sumValue = week.sumValue.toString()
-            // Используем новые константы для расчета
-            val orderDate = addWeeks(week.startDate, ORDER_WEEKS_OFFSET)
+            
+            // Определяем сдвиг для даты "Заказ" в зависимости от недели
+            val orderWeeksOffset = getOrderWeeksOffset(week.startDate)
+            val orderDate = addWeeks(week.startDate, orderWeeksOffset)
             val paymentDate = addWeeks(week.startDate, PAYMENT_WEEKS_OFFSET)
             
             val isInRange = isCurrentDateInRange(orderDate, paymentDate)
@@ -523,8 +538,9 @@ class ReportViewerActivity : AppCompatActivity() {
             
             if (currentWeekStart != weekStart) {
                 currentWeekStart = weekStart
-                // Используем новые константы для расчета
-                weekOrderDate = dateFormat.format(addWeeks(weekStart, ORDER_WEEKS_OFFSET))
+                // Определяем сдвиг для даты "Заказ" в зависимости от недели
+                val orderWeeksOffset = getOrderWeeksOffset(weekStart)
+                weekOrderDate = dateFormat.format(addWeeks(weekStart, orderWeeksOffset))
                 weekPaymentDate = dateFormat.format(addWeeks(weekStart, PAYMENT_WEEKS_OFFSET))
             }
             
