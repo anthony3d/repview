@@ -306,6 +306,13 @@ class ReportViewerActivity : AppCompatActivity() {
         return calendar.time
     }
     
+    private fun addDays(date: Date, days: Int): Date {
+        val calendar = Calendar.getInstance()
+        calendar.time = date
+        calendar.add(Calendar.DAY_OF_YEAR, days)
+        return calendar.time
+    }
+    
     private fun isCurrentDateInRange(startDate: Date, endDate: Date): Boolean {
         return currentDate in startDate..endDate
     }
@@ -483,10 +490,11 @@ class ReportViewerActivity : AppCompatActivity() {
             val startDateStr = dateFormat.format(week.startDate)
             val endDateStr = dateFormat.format(week.endDate)
             val sumValue = week.sumValue.toString()
-            // Заказ - на 3 недели позже (было 4)
+            
+            // Заказ = начало недели + 3 недели (на неделю раньше)
             val orderDate = addWeeks(week.startDate, 3)
-            // Получка - на 5 недель позже (без изменений)
-            val paymentDate = addWeeks(week.startDate, 5)
+            // Получка = Заказ + 10 дней
+            val paymentDate = addDays(orderDate, 10)
             
             val isInRange = isCurrentDateInRange(orderDate, paymentDate)
             
@@ -520,10 +528,12 @@ class ReportViewerActivity : AppCompatActivity() {
             
             if (currentWeekStart != weekStart) {
                 currentWeekStart = weekStart
-                // Заказ - на 3 недели позже (было 4)
-                weekOrderDate = dateFormat.format(addWeeks(weekStart, 3))
-                // Получка - на 5 недель позже (без изменений)
-                weekPaymentDate = dateFormat.format(addWeeks(weekStart, 5))
+                // Заказ = начало недели + 3 недели (на неделю раньше)
+                val orderDate = addWeeks(weekStart, 3)
+                weekOrderDate = dateFormat.format(orderDate)
+                // Получка = Заказ + 10 дней
+                val paymentDate = addDays(orderDate, 10)
+                weekPaymentDate = dateFormat.format(paymentDate)
             }
             
             val orderDateObj = parseDateFromString(weekOrderDate)
