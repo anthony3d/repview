@@ -40,6 +40,9 @@ class ReportViewerActivity : AppCompatActivity() {
     // Дата перехода на новый график выплат (20 июля 2026)
     private val TRANSITION_DATE = parseDateFromString("20-07-2026") ?: Date()
     
+    // Константы для расчета дат
+    private val PAYMENT_WEEKS_OFFSET = 5 // Получка: +5 недель (не меняется)
+    
     enum class ReportType {
         WEEKLY,
         DAILY
