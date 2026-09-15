@@ -1,7 +1,10 @@
 name: Build
 
 on:
-  workflow_dispatch
+  push:
+    paths:
+      - '**/ReportViewerActivity.kt'
+      - '**/SimpleLineChart.kt'
 
 jobs:
   build:
