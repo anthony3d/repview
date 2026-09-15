@@ -1,6 +1,5 @@
 package com.example.repview
 
-
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
@@ -37,12 +36,6 @@ class ReportViewerActivity : AppCompatActivity() {
     
     // Лимит в днях (300 дней ~ 10 месяцев)
     private val MAX_DAYS = 300
-    
-    // Дата перехода на новый график выплат (20 июля 2026)
-    private val TRANSITION_DATE = parseDateFromString("20-07-2026") ?: Date()
-    
-    // Константы для расчета дат
-    private val PAYMENT_WEEKS_OFFSET = 5 // Получка: +5 недель (не меняется)
     
     enum class ReportType {
         WEEKLY,
@@ -313,15 +306,6 @@ class ReportViewerActivity : AppCompatActivity() {
         return calendar.time
     }
     
-    private fun getOrderWeeksOffset(weekStart: Date): Int {
-        // Если неделя начинается с 20-07-2026 или позже, используем новый график (+3 недели)
-        return if (weekStart >= TRANSITION_DATE) {
-            3 // Новый график
-        } else {
-            4 // Старый график
-        }
-    }
-    
     private fun isCurrentDateInRange(startDate: Date, endDate: Date): Boolean {
         return currentDate in startDate..endDate
     }
@@ -499,11 +483,10 @@ class ReportViewerActivity : AppCompatActivity() {
             val startDateStr = dateFormat.format(week.startDate)
             val endDateStr = dateFormat.format(week.endDate)
             val sumValue = week.sumValue.toString()
-            
-            // Определяем количество недель для "Заказа" в зависимости от даты начала недели
-            val orderWeeksOffset = getOrderWeeksOffset(week.startDate)
-            val orderDate = addWeeks(week.startDate, orderWeeksOffset)
-            val paymentDate = addWeeks(week.startDate, PAYMENT_WEEKS_OFFSET)
+            // Заказ - на 3 недели позже (было 4)
+            val orderDate = addWeeks(week.startDate, 3)
+            // Получка - на 5 недель позже (без изменений)
+            val paymentDate = addWeeks(week.startDate, 5)
             
             val isInRange = isCurrentDateInRange(orderDate, paymentDate)
             
@@ -537,10 +520,10 @@ class ReportViewerActivity : AppCompatActivity() {
             
             if (currentWeekStart != weekStart) {
                 currentWeekStart = weekStart
-                // Определяем количество недель для "Заказа" в зависимости от даты начала недели
-                val orderWeeksOffset = getOrderWeeksOffset(weekStart)
-                weekOrderDate = dateFormat.format(addWeeks(weekStart, orderWeeksOffset))
-                weekPaymentDate = dateFormat.format(addWeeks(weekStart, PAYMENT_WEEKS_OFFSET))
+                // Заказ - на 3 недели позже (было 4)
+                weekOrderDate = dateFormat.format(addWeeks(weekStart, 3))
+                // Получка - на 5 недель позже (без изменений)
+                weekPaymentDate = dateFormat.format(addWeeks(weekStart, 5))
             }
             
             val orderDateObj = parseDateFromString(weekOrderDate)
