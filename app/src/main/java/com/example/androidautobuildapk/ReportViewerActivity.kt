@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TableLayout
 import android.widget.TableRow
 import android.widget.TextView
@@ -20,6 +21,7 @@ class ReportViewerActivity : AppCompatActivity() {
     private lateinit var lineChart: SimpleLineChart
     private lateinit var dailyInfoBlock: LinearLayout
     private lateinit var weeklyInfoBlock: LinearLayout
+    private lateinit var tableScrollView: ScrollView
     
     // Daily views
     private lateinit var thisWeekValue: TextView
@@ -61,6 +63,7 @@ class ReportViewerActivity : AppCompatActivity() {
         lineChart = findViewById(R.id.lineChart)
         dailyInfoBlock = findViewById(R.id.dailyInfoBlock)
         weeklyInfoBlock = findViewById(R.id.weeklyInfoBlock)
+        tableScrollView = findViewById(R.id.tableScrollView)
         
         // Daily views
         thisWeekValue = findViewById(R.id.thisWeekValue)
@@ -465,6 +468,13 @@ class ReportViewerActivity : AppCompatActivity() {
         }
     }
     
+    // Автоматическая прокрутка таблицы вниз
+    private fun scrollTableToBottom() {
+        tableScrollView.post {
+            tableScrollView.fullScroll(ScrollView.FOCUS_DOWN)
+        }
+    }
+    
     private fun displayWeeklyTable(weekDataList: List<WeekData>) {
         addWeeklyTableHeader()
         
@@ -491,7 +501,7 @@ class ReportViewerActivity : AppCompatActivity() {
             val endDateStr = dateFormat.format(week.endDate)
             val sumValue = week.sumValue.toString()
             
-            // Заказ = начало недели + 3 недели (на неделю раньше)
+            // Заказ = начало недели + 3 недели
             val orderDate = addWeeks(week.startDate, 3)
             // Получка = Заказ + 10 дней
             val paymentDate = addDays(orderDate, 10)
@@ -511,6 +521,9 @@ class ReportViewerActivity : AppCompatActivity() {
         }
         
         lineChart.setData(chartData, false)
+        
+        // Прокручиваем таблицу вниз после заполнения
+        scrollTableToBottom()
     }
     
     private fun displayDailyTable(dailyDataList: List<DailyData>, weekGroups: Map<Date, List<Int>>) {
@@ -528,7 +541,7 @@ class ReportViewerActivity : AppCompatActivity() {
             
             if (currentWeekStart != weekStart) {
                 currentWeekStart = weekStart
-                // Заказ = начало недели + 3 недели (на неделю раньше)
+                // Заказ = начало недели + 3 недели
                 val orderDate = addWeeks(weekStart, 3)
                 weekOrderDate = dateFormat.format(orderDate)
                 // Получка = Заказ + 10 дней
@@ -559,6 +572,9 @@ class ReportViewerActivity : AppCompatActivity() {
         }
         
         lineChart.setData(chartData, true)
+        
+        // Прокручиваем таблицу вниз после заполнения
+        scrollTableToBottom()
     }
     
     private fun addWeeklyTableHeader() {
