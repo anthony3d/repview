@@ -16,6 +16,7 @@ class SimpleLineChart @JvmOverloads constructor(
     private var dataPoints = mutableListOf<DataPoint>()
     private var movingAveragePoints = mutableListOf<DataPoint>()
     private var isDailyReport = false
+    private var showDecimals = false
     
     private val paintLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.rgb(76, 175, 80)
@@ -63,9 +64,10 @@ class SimpleLineChart @JvmOverloads constructor(
         val value: Double
     )
     
-    fun setData(data: List<DataPoint>, isDaily: Boolean = false) {
+    fun setData(data: List<DataPoint>, isDaily: Boolean = false, showDecimals: Boolean = false) {
         dataPoints = data.toMutableList()
         isDailyReport = isDaily
+        this.showDecimals = showDecimals
         
         if (isDailyReport && dataPoints.size >= 3) {
             calculateMovingAverage()
@@ -251,11 +253,15 @@ class SimpleLineChart @JvmOverloads constructor(
             val y = paddingTop + (i * chartHeight / 4)
             canvas.drawLine(paddingLeft, y, paddingLeft + chartWidth, y, paintGrid)
             
-            // Подписи значений на вертикальной оси (целые)
+            // Подписи значений на вертикальной оси
             val value = maxValue - (i * (maxValue - minValue) / 4)
             paintText.color = Color.GRAY
             paintText.textSize = 24f
-            val valueText = Math.round(value).toString()
+            val valueText = if (showDecimals) {
+                String.format(Locale.getDefault(), "%.2f", value)
+            } else {
+                Math.round(value).toString()
+            }
             canvas.drawText(valueText, 10f, y + 8f, paintText)
         }
         
