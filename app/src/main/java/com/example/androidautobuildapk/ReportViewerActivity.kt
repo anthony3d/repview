@@ -111,7 +111,7 @@ class ReportViewerActivity : AppCompatActivity() {
                 val dx = e2.x - e1.x
                 val dy = e2.y - e1.y
                 // Реагируем только если свайп явно горизонтальный
-                if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 100 && Math.abs(velocityX) > 100) {
+                if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 80 && Math.abs(velocityX) > 100) {
                     if (dx < 0) {
                         // свайп влево → Продажи
                         if (amountMode != AmountMode.SALE) {
