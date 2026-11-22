@@ -34,7 +34,14 @@ class ReportViewerActivity : AppCompatActivity() {
     private lateinit var prev4WeeksValue: TextView
     
     private val dateFormat = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
-    private val currentDate = Date()
+    
+    // Нормализованная текущая дата (без времени) — для корректной подсветки
+    private val currentDate: Date = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.time
     
     // Лимит в днях (300 дней ~ 10 месяцев)
     private val MAX_DAYS = 300
@@ -47,12 +54,12 @@ class ReportViewerActivity : AppCompatActivity() {
     data class WeekData(
         val startDate: Date,
         val endDate: Date,
-        var sumValue: Int = 0
+        var sumValue: Double = 0.0
     )
     
     data class DailyData(
         val date: Date,
-        val value: Int
+        val value: Double
     )
     
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -100,7 +107,7 @@ class ReportViewerActivity : AppCompatActivity() {
             when (cell.cellType) {
                 org.apache.poi.ss.usermodel.CellType.NUMERIC -> {
                     if (org.apache.poi.ss.usermodel.DateUtil.isCellDateFormatted(cell)) {
-                        cell.dateCellValue
+                        normalizeDate(cell.dateCellValue)
                     } else {
                         null
                     }
@@ -108,6 +115,9 @@ class ReportViewerActivity : AppCompatActivity() {
                 org.apache.poi.ss.usermodel.CellType.STRING -> {
                     val dateStr = cell.stringCellValue.trim()
                     val formats = listOf(
+                        // ISO 8601 с таймзоной (как в выгрузках WB)
+                        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.getDefault()),
+                        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()),
                         SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()),
                         SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()),
                         SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()),
@@ -115,14 +125,8 @@ class ReportViewerActivity : AppCompatActivity() {
                     )
                     for (format in formats) {
                         try {
-                            val date = format.parse(dateStr)
-                            val calendar = Calendar.getInstance()
-                            calendar.time = date
-                            calendar.set(Calendar.HOUR_OF_DAY, 0)
-                            calendar.set(Calendar.MINUTE, 0)
-                            calendar.set(Calendar.SECOND, 0)
-                            calendar.set(Calendar.MILLISECOND, 0)
-                            return calendar.time
+                            val date = format.parse(dateStr) ?: continue
+                            return normalizeDate(date)
                         } catch (e: Exception) {
                             // Пробуем следующий формат
                         }
@@ -134,6 +138,17 @@ class ReportViewerActivity : AppCompatActivity() {
         } catch (e: Exception) {
             null
         }
+    }
+    
+    // Обнуляет время, чтобы один и тот же день был одним ключом в Map
+    private fun normalizeDate(date: Date): Date {
+        val calendar = Calendar.getInstance()
+        calendar.time = date
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+        return calendar.time
     }
     
     private fun processFile(uri: Uri) {
@@ -150,8 +165,8 @@ class ReportViewerActivity : AppCompatActivity() {
             val totalRows = sheet.physicalNumberOfRows
             val endRow = totalRows - 1 // Читаем все строки
             
-            // Сначала соберем все данные
-            val allRowsData = mutableListOf<Triple<Date?, Date?, Int>>()
+            // Сначала соберем все данные: (startDate, endDate, number как Double)
+            val allRowsData = mutableListOf<Triple<Date?, Date?, Double>>()
             
             for (i in startRow..endRow) {
                 val row = sheet.getRow(i) ?: continue
@@ -164,12 +179,12 @@ class ReportViewerActivity : AppCompatActivity() {
                 val endDate = parseDate(endDateCell)
                 val number = if (numberCell != null) {
                     try {
-                        numberCell.numericCellValue.toInt()
+                        numberCell.numericCellValue
                     } catch (e: Exception) {
-                        0
+                        0.0
                     }
                 } else {
-                    0
+                    0.0
                 }
                 
                 if (startDate != null && endDate != null) {
@@ -217,7 +232,7 @@ class ReportViewerActivity : AppCompatActivity() {
         }
     }
     
-    private fun applyDayLimit(allData: List<Triple<Date?, Date?, Int>>, reportType: ReportType): List<Triple<Date?, Date?, Int>> {
+    private fun applyDayLimit(allData: List<Triple<Date?, Date?, Double>>, reportType: ReportType): List<Triple<Date?, Date?, Double>> {
         if (allData.isEmpty()) return emptyList()
         
         // Находим все уникальные даты и сортируем их по убыванию
@@ -235,7 +250,7 @@ class ReportViewerActivity : AppCompatActivity() {
         }
     }
     
-    private fun processWeeklyReport(allRowsData: List<Triple<Date?, Date?, Int>>, lastDate: Date?) {
+    private fun processWeeklyReport(allRowsData: List<Triple<Date?, Date?, Double>>, lastDate: Date?) {
         // Фильтруем по последней дате
         val filteredData = allRowsData.filter { 
             val startDate = it.first
@@ -320,7 +335,7 @@ class ReportViewerActivity : AppCompatActivity() {
         return currentDate in startDate..endDate
     }
     
-    private fun processDailyReport(allRowsData: List<Triple<Date?, Date?, Int>>, lastDate: Date?) {
+    private fun processDailyReport(allRowsData: List<Triple<Date?, Date?, Double>>, lastDate: Date?) {
         // Фильтруем по дате
         val filteredData = allRowsData.filter { 
             val startDate = it.first
@@ -328,14 +343,14 @@ class ReportViewerActivity : AppCompatActivity() {
         }
         
         // Группируем и суммируем по датам
-        val dailySumMap = mutableMapOf<Date, Int>()
-        val weekGroups = mutableMapOf<Date, MutableList<Int>>()
+        val dailySumMap = mutableMapOf<Date, Double>()
+        val weekGroups = mutableMapOf<Date, MutableList<Double>>()
         
         for (data in filteredData) {
             val startDate = data.first ?: continue
             val number = data.third
             
-            dailySumMap[startDate] = dailySumMap.getOrDefault(startDate, 0) + number
+            dailySumMap[startDate] = dailySumMap.getOrDefault(startDate, 0.0) + number
             
             val weekStart = getWeekStart(startDate)
             weekGroups.getOrPut(weekStart) { mutableListOf() }.add(number)
@@ -354,7 +369,7 @@ class ReportViewerActivity : AppCompatActivity() {
         displayDailyTable(filledDailyData, weekGroups)
     }
     
-    private fun fillMissingDates(dailySumMap: Map<Date, Int>): List<DailyData> {
+    private fun fillMissingDates(dailySumMap: Map<Date, Double>): List<DailyData> {
         if (dailySumMap.isEmpty()) return emptyList()
         
         // Находим минимальную и максимальную дату
@@ -368,7 +383,7 @@ class ReportViewerActivity : AppCompatActivity() {
         // Проходим по всем дням от минимальной до максимальной даты
         while (!calendar.time.after(maxDate)) {
             val currentDate = calendar.time
-            val value = dailySumMap[currentDate] ?: 0
+            val value = dailySumMap[currentDate] ?: 0.0
             result.add(DailyData(currentDate, value))
             calendar.add(Calendar.DAY_OF_YEAR, 1)
         }
@@ -379,9 +394,6 @@ class ReportViewerActivity : AppCompatActivity() {
     private fun calculateAndDisplayDailyStats(dailyDataList: List<DailyData>) {
         dailyInfoBlock.visibility = LinearLayout.VISIBLE
         weeklyInfoBlock.visibility = LinearLayout.GONE
-        
-        val calendar = Calendar.getInstance()
-        calendar.time = currentDate
         
         val thisWeekStart = getWeekStart(currentDate)
         
@@ -404,10 +416,10 @@ class ReportViewerActivity : AppCompatActivity() {
             add(Calendar.MONTH, -1)
         }.time
         
-        var thisWeekSum = 0
-        var lastWeekSum = 0
-        var thisMonthSum = 0
-        var lastMonthSum = 0
+        var thisWeekSum = 0.0
+        var lastWeekSum = 0.0
+        var thisMonthSum = 0.0
+        var lastMonthSum = 0.0
         
         for (data in dailyDataList) {
             if (data.date >= thisWeekStart) {
@@ -424,10 +436,11 @@ class ReportViewerActivity : AppCompatActivity() {
             }
         }
         
-        thisWeekValue.text = thisWeekSum.toString()
-        lastWeekValue.text = lastWeekSum.toString()
-        thisMonthValue.text = thisMonthSum.toString()
-        lastMonthValue.text = lastMonthSum.toString()
+        // Вариант A: показываем целые (Math.round)
+        thisWeekValue.text = Math.round(thisWeekSum).toString()
+        lastWeekValue.text = Math.round(lastWeekSum).toString()
+        thisMonthValue.text = Math.round(thisMonthSum).toString()
+        lastMonthValue.text = Math.round(lastMonthSum).toString()
     }
     
     private fun calculateAndDisplayWeeklyStats(weekList: List<WeekData>) {
@@ -442,22 +455,22 @@ class ReportViewerActivity : AppCompatActivity() {
             return
         }
         
-        var last4WeeksSum = 0
+        var last4WeeksSum = 0.0
         for (i in sortedWeeks.size - 4 until sortedWeeks.size) {
             last4WeeksSum += sortedWeeks[i].sumValue
         }
         
-        var prev4WeeksSum = 0
+        var prev4WeeksSum = 0.0
         if (sortedWeeks.size >= 8) {
             for (i in sortedWeeks.size - 8 until sortedWeeks.size - 4) {
                 prev4WeeksSum += sortedWeeks[i].sumValue
             }
         } else {
-            prev4WeeksSum = 0
+            prev4WeeksSum = 0.0
         }
         
-        last4WeeksValue.text = last4WeeksSum.toString()
-        prev4WeeksValue.text = if (prev4WeeksSum > 0) prev4WeeksSum.toString() else "Нет данных"
+        last4WeeksValue.text = Math.round(last4WeeksSum).toString()
+        prev4WeeksValue.text = if (prev4WeeksSum > 0) Math.round(prev4WeeksSum).toString() else "Нет данных"
     }
     
     private fun parseDateFromString(dateStr: String): Date? {
@@ -499,7 +512,7 @@ class ReportViewerActivity : AppCompatActivity() {
         for (week in validWeeks) {
             val startDateStr = dateFormat.format(week.startDate)
             val endDateStr = dateFormat.format(week.endDate)
-            val sumValue = week.sumValue.toString()
+            val sumValue = Math.round(week.sumValue).toString()
             
             // Заказ = начало недели + 3 недели
             val orderDate = addWeeks(week.startDate, 3)
@@ -526,7 +539,7 @@ class ReportViewerActivity : AppCompatActivity() {
         scrollTableToBottom()
     }
     
-    private fun displayDailyTable(dailyDataList: List<DailyData>, weekGroups: Map<Date, List<Int>>) {
+    private fun displayDailyTable(dailyDataList: List<DailyData>, weekGroups: Map<Date, List<Double>>) {
         addDailyTableHeader()
         
         val chartData = mutableListOf<SimpleLineChart.DataPoint>()
@@ -537,7 +550,7 @@ class ReportViewerActivity : AppCompatActivity() {
         for ((index, daily) in dailyDataList.withIndex()) {
             val weekStart = getWeekStart(daily.date)
             val dateStr = dateFormat.format(daily.date)
-            val valueStr = daily.value.toString()
+            val valueStr = Math.round(daily.value).toString()
             
             if (currentWeekStart != weekStart) {
                 currentWeekStart = weekStart
