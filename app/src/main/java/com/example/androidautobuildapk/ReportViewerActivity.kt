@@ -4,13 +4,14 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.view.GestureDetector
+import android.view.MotionEvent
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TableLayout
 import android.widget.TableRow
 import android.widget.TextView
 import android.widget.Toast
-import android.widget.ToggleButton
 import androidx.appcompat.app.AppCompatActivity
 import org.apache.poi.ss.usermodel.WorkbookFactory
 import java.text.SimpleDateFormat
@@ -23,7 +24,6 @@ class ReportViewerActivity : AppCompatActivity() {
     private lateinit var dailyInfoBlock: LinearLayout
     private lateinit var weeklyInfoBlock: LinearLayout
     private lateinit var tableScrollView: ScrollView
-    private lateinit var amountModeToggle: ToggleButton
     
     // Daily views
     private lateinit var thisWeekValue: TextView
@@ -49,18 +49,17 @@ class ReportViewerActivity : AppCompatActivity() {
     // Индексы колонок в отчёте WB
     private val COL_START_DATE = 2
     private val COL_END_DATE = 3
-    private val COL_SALE = 6          // G — «Продажа» (сколько заплатили покупатели)
-    // Итого к оплате = предпоследняя колонка (T, индекс 19 при 21 колонке)
+    private val COL_SALE = 6          // G — «Продажа»
+    // Итого к оплате = предпоследняя колонка (T)
     
     enum class ReportType { WEEKLY, DAILY }
     enum class AmountMode { PAYMENT, SALE }
     
-    // Одна строка отчёта: обе суммы сразу
     data class RowData(
         val startDate: Date,
         val endDate: Date,
-        val paymentValue: Double,   // T — Итого к оплате
-        val saleValue: Double       // G — Продажа
+        val paymentValue: Double,
+        val saleValue: Double
     ) {
         fun value(mode: AmountMode): Double =
             if (mode == AmountMode.SALE) saleValue else paymentValue
@@ -77,7 +76,6 @@ class ReportViewerActivity : AppCompatActivity() {
         val value: Double
     )
     
-    // Состояние: распарсенные данные и текущий режим
     private var allRowsData: List<RowData> = emptyList()
     private var reportType: ReportType = ReportType.DAILY
     private var lastDate: Date? = null
@@ -92,7 +90,6 @@ class ReportViewerActivity : AppCompatActivity() {
         dailyInfoBlock = findViewById(R.id.dailyInfoBlock)
         weeklyInfoBlock = findViewById(R.id.weeklyInfoBlock)
         tableScrollView = findViewById(R.id.tableScrollView)
-        amountModeToggle = findViewById(R.id.amountModeToggle)
         
         thisWeekValue = findViewById(R.id.thisWeekValue)
         lastWeekValue = findViewById(R.id.lastWeekValue)
@@ -102,13 +99,41 @@ class ReportViewerActivity : AppCompatActivity() {
         last4WeeksValue = findViewById(R.id.last4WeeksValue)
         prev4WeeksValue = findViewById(R.id.prev4WeeksValue)
         
-        // Тумблер: переключение режима
-        amountModeToggle.setOnCheckedChangeListener { _, isChecked ->
-            val newMode = if (isChecked) AmountMode.SALE else AmountMode.PAYMENT
-            if (newMode != amountMode) {
-                amountMode = newMode
-                rebuildUi()
+        // Жест-детектор: свайп влево/вправо переключает режим
+        val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onFling(
+                e1: MotionEvent?,
+                e2: MotionEvent,
+                velocityX: Float,
+                velocityY: Float
+            ): Boolean {
+                if (e1 == null) return false
+                val dx = e2.x - e1.x
+                val dy = e2.y - e1.y
+                // Реагируем только если свайп явно горизонтальный
+                if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 100 && Math.abs(velocityX) > 100) {
+                    if (dx < 0) {
+                        // свайп влево → Продажи
+                        if (amountMode != AmountMode.SALE) {
+                            amountMode = AmountMode.SALE
+                            rebuildUi()
+                        }
+                    } else {
+                        // свайп вправо → К оплате
+                        if (amountMode != AmountMode.PAYMENT) {
+                            amountMode = AmountMode.PAYMENT
+                            rebuildUi()
+                        }
+                    }
+                    return true
+                }
+                return false
             }
+        })
+        
+        tableScrollView.setOnTouchListener { _, event ->
+            gestureDetector.onTouchEvent(event)
+            false
         }
         
         when {
@@ -187,7 +212,7 @@ class ReportViewerActivity : AppCompatActivity() {
             
             val headerRow = sheet.getRow(0)
             val lastColumnIndex = headerRow.lastCellNum - 1
-            val preLastColumnIndex = lastColumnIndex - 1 // T — Итого к оплате
+            val preLastColumnIndex = lastColumnIndex - 1
             
             val startRow = 1
             val totalRows = sheet.physicalNumberOfRows
@@ -197,7 +222,6 @@ class ReportViewerActivity : AppCompatActivity() {
             
             for (i in startRow..endRow) {
                 val row = sheet.getRow(i) ?: continue
-                
                 val startDate = parseDate(row.getCell(COL_START_DATE))
                 val endDate = parseDate(row.getCell(COL_END_DATE))
                 val saleValue = readNumber(row.getCell(COL_SALE))
@@ -217,14 +241,12 @@ class ReportViewerActivity : AppCompatActivity() {
                 return
             }
             
-            // Тип отчёта
             reportType = if (parsed.take(5).count { it.startDate == it.endDate } > 2) {
                 ReportType.DAILY
             } else {
                 ReportType.WEEKLY
             }
             
-            // Лимит по дням
             val limited = applyDayLimit(parsed)
             if (limited.isEmpty()) {
                 Toast.makeText(this, "Нет данных после применения лимита", Toast.LENGTH_SHORT).show()
@@ -251,12 +273,10 @@ class ReportViewerActivity : AppCompatActivity() {
         return allData.filter { lastDates.contains(it.startDate) }
     }
     
-    // ===== Построение UI (при старте и при переключении режима) =====
+    // ===== Построение UI =====
     
     private fun rebuildUi() {
         if (allRowsData.isEmpty()) return
-        
-        // Очищаем таблицу
         tableLayout.removeAllViews()
         
         val filtered = allRowsData.filter { row ->
@@ -270,7 +290,6 @@ class ReportViewerActivity : AppCompatActivity() {
         }
     }
     
-    // Форматирование значения в зависимости от режима
     private fun formatValue(value: Double): String {
         return if (amountMode == AmountMode.SALE) {
             String.format(Locale.getDefault(), "%.2f", value)
@@ -279,18 +298,20 @@ class ReportViewerActivity : AppCompatActivity() {
         }
     }
     
+    // Заголовок колонки «Сумма» в зависимости от режима
+    private fun sumColumnTitle(): String {
+        return if (amountMode == AmountMode.SALE) "Продажи" else "К оплате"
+    }
+    
     // ===== Еженедельный отчёт =====
     
     private fun buildWeeklyReport(rows: List<RowData>) {
-        // Группировка по нормализованным неделям
         val weekMap = mutableMapOf<String, WeekData>()
-        
         for (row in rows) {
             val normalizedStart = getWeekStart(row.startDate)
             val normalizedEnd = getWeekEnd(row.endDate)
             val key = "${dateFormat.format(normalizedStart)}|${dateFormat.format(normalizedEnd)}"
             val value = row.value(amountMode)
-            
             if (weekMap.containsKey(key)) {
                 weekMap[key]!!.sumValue += value
             } else {
@@ -396,7 +417,6 @@ class ReportViewerActivity : AppCompatActivity() {
             val startDateStr = dateFormat.format(week.startDate)
             val endDateStr = dateFormat.format(week.endDate)
             val sumValue = formatValue(week.sumValue)
-            
             val orderDate = addWeeks(week.startDate, 3)
             val paymentDate = addDays(orderDate, 10)
             val isInRange = isCurrentDateInRange(orderDate, paymentDate)
@@ -406,7 +426,6 @@ class ReportViewerActivity : AppCompatActivity() {
                 dateFormat.format(orderDate), dateFormat.format(paymentDate),
                 isInRange
             )
-            
             chartData.add(SimpleLineChart.DataPoint(paymentDate, week.sumValue))
         }
         
@@ -548,7 +567,7 @@ class ReportViewerActivity : AppCompatActivity() {
         }
     }
     
-    // ===== Заголовки и строки таблицы (без изменений) =====
+    // ===== Заголовки и строки таблицы =====
     
     private fun addWeeklyTableHeader() {
         val headerRow1 = TableRow(this)
@@ -563,7 +582,8 @@ class ReportViewerActivity : AppCompatActivity() {
         weekHeader.layoutParams = TableRow.LayoutParams().apply { span = 2 }
         headerRow1.addView(weekHeader)
         
-        for (header in arrayOf("Сумма", "Заказ", "Получка")) {
+        // «Сумма» → «К оплате» / «Продажи»
+        for (header in arrayOf(sumColumnTitle(), "Заказ", "Получка")) {
             headerRow1.addView(TextView(this).apply {
                 text = header
                 setPadding(16, 12, 16, 12)
@@ -591,7 +611,8 @@ class ReportViewerActivity : AppCompatActivity() {
     
     private fun addDailyTableHeader() {
         val headerRow = TableRow(this)
-        for (header in arrayOf("Дата", "Значение", "Заказ", "Получка")) {
+        // «Значение» → «К оплате» / «Продажи»
+        for (header in arrayOf("Дата", sumColumnTitle(), "Заказ", "Получка")) {
             headerRow.addView(TextView(this).apply {
                 text = header
                 setPadding(16, 12, 16, 12)
