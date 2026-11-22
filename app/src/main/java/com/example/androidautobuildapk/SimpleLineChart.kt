@@ -60,7 +60,7 @@ class SimpleLineChart @JvmOverloads constructor(
     
     data class DataPoint(
         val date: Date,
-        val value: Int
+        val value: Double
     )
     
     fun setData(data: List<DataPoint>, isDaily: Boolean = false) {
@@ -81,7 +81,7 @@ class SimpleLineChart @JvmOverloads constructor(
         val windowSize = 28 // 4 недели
         
         for (i in dataPoints.indices) {
-            var sum = 0
+            var sum = 0.0
             var count = 0
             val start = maxOf(0, i - windowSize / 2)
             val end = minOf(dataPoints.size - 1, i + windowSize / 2)
@@ -91,7 +91,7 @@ class SimpleLineChart @JvmOverloads constructor(
                 count++
             }
             
-            val average = if (count > 0) sum / count else 0
+            val average = if (count > 0) sum / count else 0.0
             movingAveragePoints.add(DataPoint(dataPoints[i].date, average))
         }
     }
@@ -130,9 +130,9 @@ class SimpleLineChart @JvmOverloads constructor(
         val chartHeight = height - paddingTop - paddingBottom
         
         // Находим min и max значения
-        val maxValue = dataPoints.maxOfOrNull { it.value } ?: 1
-        val minValue = dataPoints.minOfOrNull { it.value } ?: 0
-        val valueRange = if (maxValue == minValue) 1f else (maxValue - minValue).toFloat()
+        val maxValue = dataPoints.maxOfOrNull { it.value } ?: 1.0
+        val minValue = dataPoints.minOfOrNull { it.value } ?: 0.0
+        val valueRange = if (maxValue == minValue) 1.0 else (maxValue - minValue)
         
         // Рисуем фоновую подсветку выходных (только для ежедневного отчета)
         if (isDailyReport && dataPoints.size > 1) {
@@ -163,7 +163,7 @@ class SimpleLineChart @JvmOverloads constructor(
         drawGrid(canvas, paddingLeft, paddingTop, chartWidth, chartHeight, maxValue, minValue)
         
         // Рисуем линию нуля
-        drawZeroLine(canvas, paddingLeft, paddingTop, chartWidth, chartHeight, maxValue.toFloat(), minValue.toFloat())
+        drawZeroLine(canvas, paddingLeft, paddingTop, chartWidth, chartHeight, maxValue, minValue)
         
         // Рисуем оси
         drawAxes(canvas, paddingLeft, paddingTop, chartWidth, chartHeight)
@@ -173,7 +173,7 @@ class SimpleLineChart @JvmOverloads constructor(
         
         for ((index, point) in dataPoints.withIndex()) {
             val x = paddingLeft + (index * chartWidth / (dataPoints.size - 1).coerceAtLeast(1))
-            val y = paddingTop + chartHeight - ((point.value - minValue) / valueRange * chartHeight)
+            val y = (paddingTop + chartHeight - ((point.value - minValue) / valueRange * chartHeight)).toFloat()
             
             points.add(x to y)
             
@@ -198,7 +198,7 @@ class SimpleLineChart @JvmOverloads constructor(
             
             for ((index, point) in movingAveragePoints.withIndex()) {
                 val x = paddingLeft + (index * chartWidth / (movingAveragePoints.size - 1).coerceAtLeast(1))
-                val y = paddingTop + chartHeight - ((point.value - minValue) / valueRange * chartHeight)
+                val y = (paddingTop + chartHeight - ((point.value - minValue) / valueRange * chartHeight)).toFloat()
                 avgPoints.add(x to y)
             }
             
@@ -243,19 +243,19 @@ class SimpleLineChart @JvmOverloads constructor(
         paddingTop: Float,
         chartWidth: Float,
         chartHeight: Float,
-        maxValue: Int,
-        minValue: Int
+        maxValue: Double,
+        minValue: Double
     ) {
         // Горизонтальные линии сетки (4 линии)
         for (i in 0..4) {
             val y = paddingTop + (i * chartHeight / 4)
             canvas.drawLine(paddingLeft, y, paddingLeft + chartWidth, y, paintGrid)
             
-            // Подписи значений на вертикальной оси
+            // Подписи значений на вертикальной оси (целые)
             val value = maxValue - (i * (maxValue - minValue) / 4)
             paintText.color = Color.GRAY
             paintText.textSize = 24f
-            val valueText = value.toInt().toString()
+            val valueText = Math.round(value).toString()
             canvas.drawText(valueText, 10f, y + 8f, paintText)
         }
         
@@ -275,15 +275,15 @@ class SimpleLineChart @JvmOverloads constructor(
         paddingTop: Float,
         chartWidth: Float,
         chartHeight: Float,
-        maxValue: Float,
-        minValue: Float
+        maxValue: Double,
+        minValue: Double
     ) {
-        val valueRange = if (maxValue == minValue) 1f else (maxValue - minValue)
+        val valueRange = if (maxValue == minValue) 1.0 else (maxValue - minValue)
         
         // Проверяем, находится ли 0 в диапазоне значений
         if (maxValue >= 0 && minValue <= 0) {
             // Вычисляем позицию линии нуля
-            val zeroY = paddingTop + chartHeight - ((0 - minValue) / valueRange * chartHeight)
+            val zeroY = (paddingTop + chartHeight - ((0 - minValue) / valueRange * chartHeight)).toFloat()
             
             // Рисуем линию нуля
             canvas.drawLine(paddingLeft, zeroY, paddingLeft + chartWidth, zeroY, paintZeroLine)
