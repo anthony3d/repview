@@ -85,6 +85,8 @@ class ReportViewerActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_report_viewer)
         
+        val rootLayout = findViewById<LinearLayout>(R.id.rootLayout)
+        
         tableLayout = findViewById(R.id.tableLayout)
         lineChart = findViewById(R.id.lineChart)
         dailyInfoBlock = findViewById(R.id.dailyInfoBlock)
@@ -110,19 +112,24 @@ class ReportViewerActivity : AppCompatActivity() {
                 if (e1 == null) return false
                 val dx = e2.x - e1.x
                 val dy = e2.y - e1.y
-                // Реагируем только если свайп явно горизонтальный
-                if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 80 && Math.abs(velocityX) > 100) {
+                // Свайп должен быть: горизонтальным, длинным и быстрым
+                if (Math.abs(dx) > Math.abs(dy) * 1.5f &&
+                    Math.abs(dx) > 150 &&
+                    Math.abs(velocityX) > 300
+                ) {
                     if (dx < 0) {
                         // свайп влево → Продажи
                         if (amountMode != AmountMode.SALE) {
                             amountMode = AmountMode.SALE
                             rebuildUi()
+                            Toast.makeText(this@ReportViewerActivity, "Продажи", Toast.LENGTH_SHORT).show()
                         }
                     } else {
                         // свайп вправо → К оплате
                         if (amountMode != AmountMode.PAYMENT) {
                             amountMode = AmountMode.PAYMENT
                             rebuildUi()
+                            Toast.makeText(this@ReportViewerActivity, "К оплате", Toast.LENGTH_SHORT).show()
                         }
                     }
                     return true
@@ -131,7 +138,8 @@ class ReportViewerActivity : AppCompatActivity() {
             }
         })
         
-        tableScrollView.setOnTouchListener { _, event ->
+        // Вешаем детектор на КОРНЕВОЙ layout — события идут мимо ScrollView
+        rootLayout.setOnTouchListener { _, event ->
             gestureDetector.onTouchEvent(event)
             false
         }
