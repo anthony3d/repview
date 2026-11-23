@@ -35,8 +35,12 @@ class ReportViewerActivity : AppCompatActivity() {
     private lateinit var last4WeeksValue: TextView
     private lateinit var prev4WeeksValue: TextView
     
+    // Жест-детектор для свайпа
+    private lateinit var gestureDetector: GestureDetector
+    
     private val dateFormat = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
     
+    // Нормализованная текущая дата (без времени)
     private val currentDate: Date = Calendar.getInstance().apply {
         set(Calendar.HOUR_OF_DAY, 0)
         set(Calendar.MINUTE, 0)
@@ -58,8 +62,8 @@ class ReportViewerActivity : AppCompatActivity() {
     data class RowData(
         val startDate: Date,
         val endDate: Date,
-        val paymentValue: Double,
-        val saleValue: Double
+        val paymentValue: Double,   // T — Итого к оплате
+        val saleValue: Double       // G — Продажа
     ) {
         fun value(mode: AmountMode): Double =
             if (mode == AmountMode.SALE) saleValue else paymentValue
@@ -81,11 +85,11 @@ class ReportViewerActivity : AppCompatActivity() {
     private var lastDate: Date? = null
     private var amountMode: AmountMode = AmountMode.PAYMENT
     
+    // ===== Жизненный цикл =====
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_report_viewer)
-        
-        val rootLayout = findViewById<LinearLayout>(R.id.rootLayout)
         
         tableLayout = findViewById(R.id.tableLayout)
         lineChart = findViewById(R.id.lineChart)
@@ -102,7 +106,7 @@ class ReportViewerActivity : AppCompatActivity() {
         prev4WeeksValue = findViewById(R.id.prev4WeeksValue)
         
         // Жест-детектор: свайп влево/вправо переключает режим
-        val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+        gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onFling(
                 e1: MotionEvent?,
                 e2: MotionEvent,
@@ -138,12 +142,6 @@ class ReportViewerActivity : AppCompatActivity() {
             }
         })
         
-        // Вешаем детектор на КОРНЕВОЙ layout — события идут мимо ScrollView
-        rootLayout.setOnTouchListener { _, event ->
-            gestureDetector.onTouchEvent(event)
-            false
-        }
-        
         when {
             intent?.action == Intent.ACTION_SEND -> {
                 val uri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
@@ -159,6 +157,14 @@ class ReportViewerActivity : AppCompatActivity() {
                 finish()
             }
         }
+    }
+    
+    // Перехватываем ВСЕ touch-события до того, как их получит ScrollView
+    override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
+        if (ev != null && ::gestureDetector.isInitialized) {
+            gestureDetector.onTouchEvent(ev)
+        }
+        return super.dispatchTouchEvent(ev)
     }
     
     // ===== Парсинг =====
@@ -306,7 +312,6 @@ class ReportViewerActivity : AppCompatActivity() {
         }
     }
     
-    // Заголовок колонки «Сумма» в зависимости от режима
     private fun sumColumnTitle(): String {
         return if (amountMode == AmountMode.SALE) "Продажи" else "К оплате"
     }
