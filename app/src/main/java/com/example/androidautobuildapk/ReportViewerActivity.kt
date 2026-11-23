@@ -117,9 +117,9 @@ class ReportViewerActivity : AppCompatActivity() {
                 val dx = e2.x - e1.x
                 val dy = e2.y - e1.y
                 // Свайп должен быть: горизонтальным, длинным и быстрым
-                if (Math.abs(dx) > Math.abs(dy) * 1.5f &&
-                    Math.abs(dx) > 150 &&
-                    Math.abs(velocityX) > 300
+                if (Math.abs(dx) > Math.abs(dy) // * 1.5f &&
+                    //Math.abs(dx) > 150 &&
+                    //Math.abs(velocityX) > 300
                 ) {
                     if (dx < 0) {
                         // свайп влево → Продажи
